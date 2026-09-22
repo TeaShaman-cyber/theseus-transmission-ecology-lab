@@ -83,3 +83,10 @@ a shared survival/extinction tolerance, and joint Shannon entropy/share feasibil
 the execution source changed without changing the frozen graph or control targets. The Wolfram
 graph/Hodge/spectral calculation was rerun through the MarcoPolo mcporter Wolfram route and
 bound to execution commit `38511ae57542db0df48ace40f1eed5f47b87e61b`. All required mathematical checks reproduced.
+
+Sixth reverification note: after evidence generation was made fail-closed on a dirty
+execution surface and `survival_tolerance` was preregistered as explicit metric
+semantics, the execution source changed while the frozen graph and control targets
+remained unchanged. The Wolfram graph/Hodge/spectral calculation was rerun through
+the MarcoPolo mcporter Wolfram route and bound to execution commit
+`0096a9becb8561a58b6cb7811c1e648016ddc9ea`. All required mathematical checks reproduced.
