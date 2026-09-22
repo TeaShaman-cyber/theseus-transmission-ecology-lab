@@ -28,7 +28,7 @@
   "independent_witness": {
     "expected_backend": "WolframLanguageEvaluator",
     "expected_inputs": {
-      "controls_sha256": "37d48024d933569cbb0ef42d114764169e09524b1ba78475bd9f553815022780",
+      "controls_sha256": "74d85ae2ab15c594e317de25ede003db047bf29fbf37d8439463b180e20c3dd8",
       "graph_sha256": "97b57eb5e2070a31370793e126f73585232c2d2211f8ea9823cfd29879d26e49"
     },
     "kind": "spectral_or_hodge",
