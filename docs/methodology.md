@@ -90,3 +90,10 @@ semantics, the execution source changed while the frozen graph and control targe
 remained unchanged. The Wolfram graph/Hodge/spectral calculation was rerun through
 the MarcoPolo mcporter Wolfram route and bound to execution commit
 `0096a9becb8561a58b6cb7811c1e648016ddc9ea`. All required mathematical checks reproduced.
+
+Seventh reverification note: the independent Wolfram witness is now backed by a
+versioned executable recipe at `experiments/v0/witness/wolfram-v0.wl`, and the
+receipt binds the exact source recipe digest rather than only naming the backend.
+That exact recipe was executed through the MarcoPolo mcporter Wolfram route and
+bound to execution commit `a3db87d8aa5f2a4ecb91decfd1280990f97de9bc`.
+All required graph/Hodge/spectral checks reproduced.
