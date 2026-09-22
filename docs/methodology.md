@@ -103,3 +103,9 @@ the package initializer, the exact versioned Wolfram witness recipe was rerun th
 the MarcoPolo mcporter route and rebound to execution commit
 `b4497ec5c6c67afbbab5b6e69564ee1678a0e4bf`. The graph, controls, recipe digest,
 and all required mathematical results were unchanged.
+
+Seventh reverification note: after strict JSON input parsing and generalized package-level
+execution-surface provenance were added, the execution source changed while the frozen graph,
+controls, and versioned Wolfram recipe remained unchanged. The exact committed recipe was rerun
+through the MarcoPolo mcporter Wolfram route and bound to execution commit
+`18fbc55f8c361e91aa8e895f86efe03e6be93c5d`. All required mathematical checks reproduced.
