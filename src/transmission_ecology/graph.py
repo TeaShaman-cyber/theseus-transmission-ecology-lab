@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import json
 import math
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+
+from transmission_ecology.strict_json import load_json
 
 
 @dataclass(frozen=True)
@@ -31,7 +32,7 @@ def _validate_node_id(value: object) -> str:
 
 
 def load_graph(path: Path | str) -> GraphFixture:
-    payload = json.loads(Path(path).read_text(encoding='utf-8'))
+    payload = load_json(path)
     if payload.get("schema_version") != 1:
         raise ValueError("unsupported graph schema_version")
     graph_id = payload.get("graph_id")

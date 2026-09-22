@@ -24,7 +24,7 @@ for root in experiments receipts; do
     [ -d "$root" ] || continue
     find "$root" -type f -name '*.json' -print
 done | sort | while IFS= read -r path; do
-    python3 -m json.tool "$path" >/dev/null
+    python3 -c 'from transmission_ecology.strict_json import load_json; import sys; load_json(sys.argv[1])' "$path"
 done
 
 printf '%s\n' '== whitespace =='

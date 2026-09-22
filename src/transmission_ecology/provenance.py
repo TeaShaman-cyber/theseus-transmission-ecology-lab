@@ -6,14 +6,8 @@ from pathlib import Path
 
 EXPERIMENT_SURFACE_PATHS = (
     "pyproject.toml",
-    "src/transmission_ecology/__init__.py",
-    "src/transmission_ecology/graph.py",
-    "src/transmission_ecology/state.py",
-    "src/transmission_ecology/metrics.py",
-    "src/transmission_ecology/cli.py",
-    "src/transmission_ecology/receipt.py",
-    "src/transmission_ecology/provenance.py",
-    "src/transmission_ecology/models",
+    "src/transmission_ecology",
+    ":(exclude)src/transmission_ecology/research_qa.py",
     "experiments/v0",
     "tools/run-v0",
 )

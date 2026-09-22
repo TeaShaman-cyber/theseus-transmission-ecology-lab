@@ -23,13 +23,17 @@ from transmission_ecology.receipt import (
     write_json_atomic,
 )
 from transmission_ecology.state import simulate
+from transmission_ecology.strict_json import load_json
 
 
 ADAPTERS = {"virus": virus, "meme": meme, "agent": agent}
 
 
 def _load_json(path: Path) -> dict:
-    return json.loads(path.read_text(encoding='utf-8'))
+    value = load_json(path)
+    if not isinstance(value, dict):
+        raise ValueError(f"expected JSON object: {path}")
+    return value
 
 
 def _git_head(root: Path) -> str:

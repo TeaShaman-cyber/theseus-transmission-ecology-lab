@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 
 from transmission_ecology.metrics import SURVIVAL_TOLERANCE
+from transmission_ecology.strict_json import load_json, loads_strict
 from transmission_ecology.provenance import (
     EXPERIMENT_SURFACE_PATHS,
     working_tree_paths_dirty,
@@ -283,6 +284,25 @@ def evaluate_research_contract(
     missing = [key for key in required if not contract.get(key)]
     if missing:
         return _status("FAIL", "missing_contract_fields", missing=missing)
+
+    metadata_mismatches = []
+    for field in ("question", "hypothesis"):
+        if not isinstance(contract.get(field), str) or not contract.get(field).strip():
+            metadata_mismatches.append(field)
+    for field in ("falsifiers", "limitations"):
+        values = contract.get(field)
+        if (
+            not isinstance(values, list)
+            or not values
+            or any(not isinstance(item, str) or not item.strip() for item in values)
+        ):
+            metadata_mismatches.append(field)
+    if metadata_mismatches:
+        return _status(
+            "FAIL",
+            "invalid_contract_metadata",
+            mismatched=sorted(metadata_mismatches),
+        )
 
     absent = [name for name in REQUIRED_RUNS if name not in run_receipts]
     if absent:
@@ -795,7 +815,7 @@ def evaluate_research_contract(
 
 
 def _load_json(path: Path):
-    return json.loads(path.read_text(encoding="utf-8"))
+    return load_json(path)
 
 
 def _maybe_load(path: Path):
@@ -834,7 +854,7 @@ def _git_blob_json(root: Path, commit: str, relpath: str) -> dict | None:
     if result.returncode != 0:
         return None
     try:
-        value = json.loads(result.stdout)
+        value = loads_strict(result.stdout.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError):
         return None
     return value if isinstance(value, dict) else None

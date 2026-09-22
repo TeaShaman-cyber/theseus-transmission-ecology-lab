@@ -219,6 +219,21 @@ def evaluate(runs=None, control=None, witness=None, *, source_commit=COMMIT_A, b
 
 
 class ResearchQATests(unittest.TestCase):
+    def test_nonfinite_contract_metadata_fails_closed(self):
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["question"] = float("nan")
+        out = evaluate_research_contract(
+            contract,
+            valid_runs(),
+            valid_control_receipt(),
+            valid_witness(),
+            source_commit=COMMIT_A,
+            evidence_bindings=BASE_BINDINGS,
+        )
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "invalid_contract_metadata")
+        self.assertIn("question", out["mismatched"])
+
     def test_missing_run_receipts_is_unknown_not_pass(self):
         out = evaluate_research_contract(
             BASE_CONTRACT,
@@ -610,6 +625,23 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["contract_status"], "PASS")
         self.assertEqual(out["authority"], "NONE")
         self.assertNotIn("scientific_truth", out)
+
+    def test_dirty_arbitrary_package_module_is_part_of_execution_surface(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "t"], cwd=root, check=True)
+            helper = root / "src" / "transmission_ecology" / "future_helper.py"
+            helper.parent.mkdir(parents=True)
+            helper.write_text("VALUE = 1\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
+            head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+            helper.write_text("VALUE = 2\n", encoding="utf-8")
+            currentness, reason = _source_currentness(root, head, head)
+            self.assertEqual(currentness, "STALE")
+            self.assertEqual(reason, "working_tree_experiment_surface_dirty")
 
     def test_dirty_experiment_surface_is_stale_even_when_source_equals_head(self):
         with tempfile.TemporaryDirectory() as tmp:
