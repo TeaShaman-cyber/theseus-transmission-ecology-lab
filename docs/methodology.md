@@ -134,3 +134,10 @@ parameter, seed, and horizon data using a separate pure-Python verifier, while r
 refuses a horizon that differs from source controls. The source-consuming Wolfram witness was rerun
 from execution commit `8cd29797bc5b657343f2e50ab0e942de0a6428ce`; all required mathematical
 checks reproduced with authority `NONE`.
+
+Eleventh reverification note: cross-repository QA exposed that Python's otherwise strict-looking
+JSON path still accepted duplicate object keys with last-value-wins semantics. Deterministic v0
+now rejects duplicate keys at any depth as well as non-standard numeric constants, both in the
+repository parser and in the standalone Wolfram witness adapter. The adapter was rerun from exact
+execution commit `04c6a5e5e2d0e034a3227bffd3bcdba868361552`; the source-consuming witness was
+`VERIFIED` and all required mathematical checks reproduced with authority `NONE`.
