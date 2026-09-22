@@ -21,6 +21,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("workflow_dispatch:", text)
         self.assertIn("pull_request:", text)
         self.assertIn("paths:", text)
+        self.assertIn("receipts/research-qa/**", text)
         self.assertIn("fetch-depth: 0", text)
         self.assertIn("source_commit", text)
         self.assertIn("git worktree add --detach", text)

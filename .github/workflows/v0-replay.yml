@@ -10,6 +10,7 @@ on:
       - experiments/**
       - receipts/reference/**
       - receipts/independent/**
+      - receipts/research-qa/**
       - tools/**
       - tests/**
       - .github/workflows/v0-replay.yml

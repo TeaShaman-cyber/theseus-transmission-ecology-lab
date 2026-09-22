@@ -39,6 +39,8 @@ BASE_CONTRACT = {
         "kind": "spectral_or_hodge",
         "expected_backend": "WolframLanguageEvaluator",
         "recipe_path": "experiments/v0/witness/wolfram-v0.wl",
+        "adapter_path": "experiments/v0/witness/wolfram_v0_adapter.py",
+        "witness_schema_version": 2,
         "expected_inputs": {
             "graph_sha256": "graph-ok",
             "controls_sha256": "controls-ok",
@@ -89,6 +91,8 @@ BASE_BINDINGS = {
     "witness": {
         "recipe_path": "experiments/v0/witness/wolfram-v0.wl",
         "recipe_sha256": "recipe-ok",
+        "adapter_path": "experiments/v0/witness/wolfram_v0_adapter.py",
+        "adapter_sha256": "adapter-ok",
     },
     "control": {
         "graph_sha256": "graph-ok",
@@ -192,6 +196,7 @@ def valid_control_receipt(commit: str = COMMIT_A):
 
 def valid_witness(commit: str = COMMIT_A):
     return {
+        "schema_version": 2,
         "experiment_id": "deterministic-v0",
         "source_commit": commit,
         "status": "VERIFIED",
@@ -199,6 +204,7 @@ def valid_witness(commit: str = COMMIT_A):
         "scientific_authority": "NONE",
         "backend": "WolframLanguageEvaluator",
         "recipe_sha256": "recipe-ok",
+        "adapter_sha256": "adapter-ok",
         "kind": "spectral_or_hodge",
         "inputs": {
             "graph_sha256": "graph-ok",
@@ -270,6 +276,40 @@ class ResearchQATests(unittest.TestCase):
             evidence_bindings=BASE_BINDINGS,
         )
         self.assertEqual(out["contract_status"], "UNKNOWN")
+
+    def test_symbolic_source_commit_is_rejected(self):
+        source = "HEAD"
+        out = evaluate_research_contract(
+            BASE_CONTRACT,
+            valid_runs(source),
+            valid_control_receipt(source),
+            valid_witness(source),
+            source_commit=source,
+            evidence_bindings=BASE_BINDINGS,
+        )
+        self.assertEqual(out["contract_status"], "FAIL", out)
+        self.assertEqual(out["reason"], "invalid_source_commit", out)
+
+    def test_experiment_id_is_required_typed_metadata(self):
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract.pop("experiment_id")
+        runs = valid_runs()
+        for receipt in runs.values():
+            receipt.pop("experiment_id")
+        control = valid_control_receipt()
+        control.pop("experiment_id")
+        witness = valid_witness()
+        witness.pop("experiment_id")
+        out = evaluate_research_contract(
+            contract,
+            runs,
+            control,
+            witness,
+            source_commit=COMMIT_A,
+            evidence_bindings=BASE_BINDINGS,
+        )
+        self.assertEqual(out["contract_status"], "FAIL", out)
+        self.assertIn(out["reason"], {"missing_contract_fields", "invalid_contract_metadata"}, out)
 
     def test_commit_mismatch_fails_closed(self):
         runs = valid_runs(COMMIT_B)
@@ -594,6 +634,58 @@ class ResearchQATests(unittest.TestCase):
                 self.assertEqual(out["reason"], "witness_content_mismatch", out)
                 self.assertIn("backend", out["mismatched"], out)
 
+    def test_witness_adapter_digest_must_bind_source_adapter(self):
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["independent_witness"]["adapter_path"] = (
+            "experiments/v0/witness/wolfram_v0_adapter.py"
+        )
+        contract["independent_witness"]["witness_schema_version"] = 2
+        bindings = json.loads(json.dumps(BASE_BINDINGS))
+        bindings["witness"]["adapter_path"] = (
+            "experiments/v0/witness/wolfram_v0_adapter.py"
+        )
+        bindings["witness"]["adapter_sha256"] = "adapter-ok"
+        witness = valid_witness()
+        witness["schema_version"] = 2
+        witness["adapter_sha256"] = "wrong-adapter"
+        out = evaluate_research_contract(
+            contract,
+            valid_runs(),
+            valid_control_receipt(),
+            witness,
+            source_commit=COMMIT_A,
+            evidence_bindings=bindings,
+        )
+        self.assertEqual(out["contract_status"], "FAIL", out)
+        self.assertEqual(out["reason"], "witness_content_mismatch", out)
+        self.assertIn("adapter_sha256", out["mismatched"], out)
+
+    def test_witness_schema_version_must_match_contract(self):
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["independent_witness"]["adapter_path"] = (
+            "experiments/v0/witness/wolfram_v0_adapter.py"
+        )
+        contract["independent_witness"]["witness_schema_version"] = 2
+        bindings = json.loads(json.dumps(BASE_BINDINGS))
+        bindings["witness"]["adapter_path"] = (
+            "experiments/v0/witness/wolfram_v0_adapter.py"
+        )
+        bindings["witness"]["adapter_sha256"] = "adapter-ok"
+        witness = valid_witness()
+        witness["schema_version"] = 1
+        witness["adapter_sha256"] = "adapter-ok"
+        out = evaluate_research_contract(
+            contract,
+            valid_runs(),
+            valid_control_receipt(),
+            witness,
+            source_commit=COMMIT_A,
+            evidence_bindings=bindings,
+        )
+        self.assertEqual(out["contract_status"], "FAIL", out)
+        self.assertEqual(out["reason"], "witness_content_mismatch", out)
+        self.assertIn("schema_version", out["mismatched"], out)
+
     def test_witness_recipe_digest_must_bind_source_recipe(self):
         witness = valid_witness()
         witness["recipe_sha256"] = "wrong-recipe"
@@ -647,6 +739,23 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["contract_status"], "PASS")
         self.assertEqual(out["authority"], "NONE")
         self.assertNotIn("scientific_truth", out)
+
+    def test_dirty_python_startup_hook_is_part_of_execution_surface(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "t"], cwd=root, check=True)
+            hook = root / "src" / "sitecustomize.py"
+            hook.parent.mkdir(parents=True)
+            hook.write_text("VALUE = 1\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
+            head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+            hook.write_text("VALUE = 2\n", encoding="utf-8")
+            currentness, reason = _source_currentness(root, head, head)
+            self.assertEqual(currentness, "STALE")
+            self.assertEqual(reason, "working_tree_experiment_surface_dirty")
 
     def test_dirty_arbitrary_package_module_is_part_of_execution_surface(self):
         with tempfile.TemporaryDirectory() as tmp:

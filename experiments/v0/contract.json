@@ -26,6 +26,7 @@
   ],
   "hypothesis": "Selected operator-level invariants remain comparable across substrates without implying microscopic mechanism identity.",
   "independent_witness": {
+    "adapter_path": "experiments/v0/witness/wolfram_v0_adapter.py",
     "expected_backend": "WolframLanguageEvaluator",
     "expected_inputs": {
       "controls_sha256": "74d85ae2ab15c594e317de25ede003db047bf29fbf37d8439463b180e20c3dd8",
@@ -46,7 +47,8 @@
       "supercritical_spectral_radius": 1.2,
       "vertex_count": 4,
       "weak_component_count": 1
-    }
+    },
+    "witness_schema_version": 2
   },
   "limitations": [
     "linear deterministic model only",

@@ -5,6 +5,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -271,6 +272,7 @@ def evaluate_research_contract(
     evidence_bindings,
 ):
     required = (
+        "experiment_id",
         "question",
         "hypothesis",
         "falsifiers",
@@ -285,7 +287,18 @@ def evaluate_research_contract(
     if missing:
         return _status("FAIL", "missing_contract_fields", missing=missing)
 
+    if (
+        not isinstance(source_commit, str)
+        or re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", source_commit) is None
+    ):
+        return _status("FAIL", "invalid_source_commit")
+
     metadata_mismatches = []
+    if (
+        not isinstance(contract.get("experiment_id"), str)
+        or not contract.get("experiment_id").strip()
+    ):
+        metadata_mismatches.append("experiment_id")
     for field in ("question", "hypothesis"):
         if not isinstance(contract.get(field), str) or not contract.get(field).strip():
             metadata_mismatches.append(field)
@@ -388,14 +401,24 @@ def evaluate_research_contract(
         return _status("FAIL", "invalid_independent_witness_contract")
     expected_backend = witness_contract.get("expected_backend")
     recipe_path = witness_contract.get("recipe_path")
+    adapter_path = witness_contract.get("adapter_path")
+    witness_schema_version = witness_contract.get("witness_schema_version")
     if (
         not isinstance(expected_backend, str)
         or not expected_backend
         or not isinstance(recipe_path, str)
         or not recipe_path
+        or not isinstance(adapter_path, str)
+        or not adapter_path
+        or isinstance(witness_schema_version, bool)
+        or not isinstance(witness_schema_version, int)
+        or witness_schema_version <= 0
         or expected_witness.get("recipe_path") != recipe_path
+        or expected_witness.get("adapter_path") != adapter_path
         or not isinstance(expected_witness.get("recipe_sha256"), str)
         or not expected_witness.get("recipe_sha256")
+        or not isinstance(expected_witness.get("adapter_sha256"), str)
+        or not expected_witness.get("adapter_sha256")
     ):
         return _status("FAIL", "invalid_independent_witness_contract")
 
@@ -752,10 +775,14 @@ def evaluate_research_contract(
             witness_mismatches.append("authority")
         if witness.get("scientific_authority") != "NONE":
             witness_mismatches.append("scientific_authority")
+        if witness.get("schema_version") != witness_schema_version:
+            witness_mismatches.append("schema_version")
         if witness.get("backend") != expected_backend:
             witness_mismatches.append("backend")
         if witness.get("recipe_sha256") != expected_witness.get("recipe_sha256"):
             witness_mismatches.append("recipe_sha256")
+        if witness.get("adapter_sha256") != expected_witness.get("adapter_sha256"):
+            witness_mismatches.append("adapter_sha256")
         if witness.get("kind") != witness_contract.get("kind"):
             witness_mismatches.append("kind")
 
@@ -937,14 +964,17 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
     if not isinstance(witness_contract, dict):
         return None
     recipe_path = witness_contract.get("recipe_path")
-    if (
-        not isinstance(recipe_path, str)
-        or not recipe_path.startswith("experiments/v0/")
-        or ".." in Path(recipe_path).parts
-    ):
-        return None
+    adapter_path = witness_contract.get("adapter_path")
+    for witness_path in (recipe_path, adapter_path):
+        if (
+            not isinstance(witness_path, str)
+            or not witness_path.startswith("experiments/v0/")
+            or ".." in Path(witness_path).parts
+        ):
+            return None
     recipe_sha256 = _git_blob_sha256(root, source_commit, recipe_path)
-    if recipe_sha256 is None:
+    adapter_sha256 = _git_blob_sha256(root, source_commit, adapter_path)
+    if recipe_sha256 is None or adapter_sha256 is None:
         return None
 
     runs = {}
@@ -982,6 +1012,8 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
         "witness": {
             "recipe_path": recipe_path,
             "recipe_sha256": recipe_sha256,
+            "adapter_path": adapter_path,
+            "adapter_sha256": adapter_sha256,
         },
         "control": {
             "graph_sha256": graph_sha256,

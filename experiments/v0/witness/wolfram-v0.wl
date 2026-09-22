@@ -1,25 +1,27 @@
 Module[
-  {g, b, rank, nullity, h1, h1null, a, k0, rho, sub, super, assoc},
-  g = Graph[
-    {
-      DirectedEdge["n1", "n2"],
-      DirectedEdge["n2", "n3"],
-      DirectedEdge["n3", "n1"],
-      DirectedEdge["n3", "n4"],
-      DirectedEdge["n4", "n1"]
-    },
-    DirectedEdges -> True
-  ];
+  {
+    nodes = __NODES__, edgeData = __EDGES__, variantCount = __VARIANT_COUNT__,
+    subTarget = __SUB_TARGET__, superTarget = __SUPER_TARGET__, directedEdges,
+    g, b, rank, nullity, h1, h1null, index, a, k0, rho, sub, super, assoc
+  },
+  directedEdges = DirectedEdge @@@ edgeData[[All, {1, 2}]];
+  g = Graph[nodes, directedEdges, DirectedEdges -> True];
   b = Normal[IncidenceMatrix[g]];
   rank = MatrixRank[b];
   nullity = Length[EdgeList[g]] - rank;
   h1 = Transpose[b].b;
   h1null = Length[h1] - MatrixRank[h1];
-  a = Transpose[Normal[AdjacencyMatrix[g]]];
-  k0 = KroneckerProduct[a, IdentityMatrix[2]];
+  index = AssociationThread[nodes -> Range[Length[nodes]]];
+  a = ConstantArray[0, {Length[nodes], Length[nodes]}];
+  Do[
+    a[[index[edge[[2]]], index[edge[[1]]]]] =
+      a[[index[edge[[2]]], index[edge[[1]]]]] + edge[[3]],
+    {edge, edgeData}
+  ];
+  k0 = KroneckerProduct[a, IdentityMatrix[variantCount]];
   rho = Max[Abs[Eigenvalues[N[k0, 30]]]];
-  sub = Max[Abs[Eigenvalues[N[(0.8/rho) k0, 30]]]];
-  super = Max[Abs[Eigenvalues[N[(1.2/rho) k0, 30]]]];
+  sub = Max[Abs[Eigenvalues[N[(subTarget/rho) k0, 30]]]];
+  super = Max[Abs[Eigenvalues[N[(superTarget/rho) k0, 30]]]];
   assoc = <|
     "vertex_count" -> VertexCount[g],
     "edge_count" -> EdgeCount[g],
