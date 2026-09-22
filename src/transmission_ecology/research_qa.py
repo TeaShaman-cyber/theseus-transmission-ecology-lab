@@ -19,6 +19,10 @@ EXPERIMENT_SURFACE_PATHS = (
     "experiments/v0",
     "tools/run-v0",
 )
+RESEARCH_EVIDENCE_PATHS = (
+    "receipts/reference",
+    "receipts/independent/wolfram-v0.json",
+)
 
 
 def _status(status: str, reason: str, **extra):
@@ -67,13 +71,52 @@ def evaluate_research_contract(contract, run_receipts, witness, *, source_commit
         )
     if any(not r.get("controls", {}).get("all_passed") for r in run_receipts.values()):
         return _status("FAIL", "required_control_failed")
-    if contract["independent_witness"].get("required"):
+    witness_contract = contract["independent_witness"]
+    if witness_contract.get("required"):
         if witness is None:
             return _status("UNKNOWN", "independent_witness_missing")
         if witness.get("source_commit") != source_commit:
             return _status("FAIL", "witness_commit_mismatch")
         if witness.get("status") != "VERIFIED":
             return _status("DEGRADED", "witness_not_verified")
+
+        expected_inputs = witness_contract.get("expected_inputs")
+        required_checks = witness_contract.get("required_checks")
+        if not isinstance(expected_inputs, dict) or not expected_inputs:
+            return _status("FAIL", "invalid_independent_witness_contract")
+        if not isinstance(required_checks, dict) or not required_checks:
+            return _status("FAIL", "invalid_independent_witness_contract")
+
+        mismatched = []
+        if witness.get("experiment_id") != contract.get("experiment_id"):
+            mismatched.append("experiment_id")
+        if witness.get("authority") != "NONE":
+            mismatched.append("authority")
+        if witness.get("kind") != witness_contract.get("kind"):
+            mismatched.append("kind")
+
+        observed_inputs = witness.get("inputs")
+        if not isinstance(observed_inputs, dict):
+            mismatched.append("inputs")
+        else:
+            for key, expected in expected_inputs.items():
+                if observed_inputs.get(key) != expected:
+                    mismatched.append(f"inputs.{key}")
+
+        observed_checks = witness.get("checks")
+        if not isinstance(observed_checks, dict):
+            mismatched.append("checks")
+        else:
+            for key, expected in required_checks.items():
+                if observed_checks.get(key) != expected:
+                    mismatched.append(f"checks.{key}")
+
+        if mismatched:
+            return _status(
+                "FAIL",
+                "witness_content_mismatch",
+                mismatched=sorted(set(mismatched)),
+            )
     return {
         "contract_status": "PASS",
         "epistemic_state": "HYPOTHESIS",
@@ -97,19 +140,33 @@ def _git_head(root: Path) -> str:
     return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
 
 
-def _source_currentness(root: Path, source_commit: str, head: str) -> tuple[str, str | None]:
-    dirty = subprocess.run(
-        ["git", "status", "--porcelain", "--untracked-files=all", "--", *EXPERIMENT_SURFACE_PATHS],
+def _dirty_paths(root: Path, paths: tuple[str, ...]) -> tuple[bool | None, str]:
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all", "--", *paths],
         cwd=root,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         text=True,
         check=False,
     )
-    if dirty.returncode != 0:
+    if status.returncode != 0:
+        return None, ""
+    return bool(status.stdout.strip()), status.stdout
+
+
+def _source_currentness(root: Path, source_commit: str, head: str) -> tuple[str, str | None]:
+    experiment_dirty, _ = _dirty_paths(root, EXPERIMENT_SURFACE_PATHS)
+    if experiment_dirty is None:
         return "UNKNOWN", "working_tree_status_unavailable"
-    if dirty.stdout.strip():
+    if experiment_dirty:
         return "STALE", "working_tree_experiment_surface_dirty"
+
+    evidence_dirty, _ = _dirty_paths(root, RESEARCH_EVIDENCE_PATHS)
+    if evidence_dirty is None:
+        return "UNKNOWN", "working_tree_status_unavailable"
+    if evidence_dirty:
+        return "STALE", "working_tree_research_input_dirty"
+
     if source_commit == head:
         return "CURRENT", None
     ancestor = subprocess.run(

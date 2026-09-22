@@ -1,9 +1,10 @@
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
-from transmission_ecology.cli import run_substrate, write_reference_set
+from transmission_ecology.cli import main, run_substrate, write_reference_set
 from transmission_ecology.receipt import sha256_file
 from transmission_ecology.research_qa import build_current_receipt
 
@@ -51,6 +52,12 @@ class RunnerTests(unittest.TestCase):
             controls["parameters_sha256"],
             sha256_file(ROOT / "experiments" / "v0" / "controls.json"),
         )
+
+    def test_run_v0_requires_write_reference_flag_before_persistent_write(self):
+        with patch("transmission_ecology.cli.write_reference_set") as writer:
+            with self.assertRaises(SystemExit):
+                main(["run-v0", "--horizon", "1"])
+            writer.assert_not_called()
 
     def test_reference_set_is_byte_deterministic_for_same_source_commit(self):
         with tempfile.TemporaryDirectory() as tmp:

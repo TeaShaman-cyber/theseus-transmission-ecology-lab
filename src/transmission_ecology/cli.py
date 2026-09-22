@@ -193,6 +193,10 @@ def main(argv=None) -> int:
     run.add_argument("--write-reference", action="store_true")
     args = parser.parse_args(argv)
     if args.command == 'run-v0':
+        if not args.write_reference:
+            parser.error(
+                "run-v0 requires --write-reference before overwriting reference receipts"
+            )
         root = Path.cwd().resolve()
         source_commit = _git_head(root)
         out = root / "receipts" / "reference"

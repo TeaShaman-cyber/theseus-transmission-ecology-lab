@@ -18,7 +18,17 @@ BASE_CONTRACT = {
     "declared_metrics": ["spectral_radius", "cycle_rank_beta1"],
     "required_controls": ["subcritical", "supercritical", "topology_only"],
     "limitations": ["linear deterministic model only"],
-    "independent_witness": {"required": True, "kind": "spectral_or_hodge"},
+    "independent_witness": {
+        "required": True,
+        "kind": "spectral_or_hodge",
+        "expected_inputs": {"graph_sha256": "graph-ok", "controls_sha256": "controls-ok"},
+        "required_checks": {
+            "cycle_rank_beta1": 2,
+            "hodge1_nullity": 2,
+            "subcritical_below_one": True,
+            "supercritical_above_one": True,
+        },
+    },
     "receipt_contract": {"schema_version": 2, "float_significant_digits": 12},
 }
 
@@ -29,6 +39,23 @@ def run_receipt(commit: str, *, all_passed: bool = True, schema_version: int = 2
         "numeric_policy": {"float_significant_digits": digits},
         "source_commit": commit,
         "controls": {"all_passed": all_passed},
+    }
+
+
+def valid_witness(commit: str):
+    return {
+        "experiment_id": "deterministic-v0",
+        "source_commit": commit,
+        "status": "VERIFIED",
+        "authority": "NONE",
+        "kind": "spectral_or_hodge",
+        "inputs": {"graph_sha256": "graph-ok", "controls_sha256": "controls-ok"},
+        "checks": {
+            "cycle_rank_beta1": 2,
+            "hodge1_nullity": 2,
+            "subcritical_below_one": True,
+            "supercritical_above_one": True,
+        },
     }
 
 
@@ -45,7 +72,7 @@ class ResearchQATests(unittest.TestCase):
 
     def test_commit_mismatch_fails_closed(self):
         runs = {name: run_receipt("b" * 40) for name in ("virus", "meme", "agent")}
-        witness = {"source_commit": "a" * 40, "status": "VERIFIED"}
+        witness = valid_witness("a" * 40)
         out = evaluate_research_contract(BASE_CONTRACT, runs, witness, source_commit="a" * 40)
         self.assertEqual(out["contract_status"], "FAIL")
 
@@ -55,14 +82,30 @@ class ResearchQATests(unittest.TestCase):
             "meme": run_receipt("a" * 40, digits=10),
             "agent": run_receipt("a" * 40),
         }
-        witness = {"source_commit": "a" * 40, "status": "VERIFIED"}
+        witness = valid_witness("a" * 40)
         out = evaluate_research_contract(BASE_CONTRACT, runs, witness, source_commit="a" * 40)
         self.assertEqual(out["contract_status"], "FAIL")
         self.assertEqual(out["reason"], "receipt_contract_mismatch")
 
+    def test_verified_witness_with_wrong_input_hash_fails_closed(self):
+        runs = {name: run_receipt("a" * 40) for name in ("virus", "meme", "agent")}
+        witness = valid_witness("a" * 40)
+        witness["inputs"]["graph_sha256"] = "wrong"
+        out = evaluate_research_contract(BASE_CONTRACT, runs, witness, source_commit="a" * 40)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "witness_content_mismatch")
+
+    def test_verified_witness_with_wrong_required_check_fails_closed(self):
+        runs = {name: run_receipt("a" * 40) for name in ("virus", "meme", "agent")}
+        witness = valid_witness("a" * 40)
+        witness["checks"]["hodge1_nullity"] = 999
+        out = evaluate_research_contract(BASE_CONTRACT, runs, witness, source_commit="a" * 40)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "witness_content_mismatch")
+
     def test_complete_contract_can_pass_without_claiming_truth(self):
         runs = {name: run_receipt("a" * 40) for name in ("virus", "meme", "agent")}
-        witness = {"source_commit": "a" * 40, "status": "VERIFIED"}
+        witness = valid_witness("a" * 40)
         out = evaluate_research_contract(BASE_CONTRACT, runs, witness, source_commit="a" * 40)
         self.assertEqual(out["contract_status"], "PASS")
         self.assertEqual(out["authority"], "NONE")
@@ -83,6 +126,40 @@ class ResearchQATests(unittest.TestCase):
             self.assertEqual(currentness, "STALE")
             self.assertEqual(reason, "working_tree_experiment_surface_dirty")
 
+    def test_dirty_witness_input_is_stale_even_when_experiment_surface_is_clean(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "t"], cwd=root, check=True)
+            witness = root / "receipts" / "independent" / "wolfram-v0.json"
+            witness.parent.mkdir(parents=True)
+            witness.write_text("{}\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
+            head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+            witness.write_text('{"changed":true}\n', encoding="utf-8")
+            currentness, reason = _source_currentness(root, head, head)
+            self.assertEqual(currentness, "STALE")
+            self.assertEqual(reason, "working_tree_research_input_dirty")
+
+    def test_dirty_reference_receipt_is_stale_even_when_experiment_surface_is_clean(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "t"], cwd=root, check=True)
+            receipt = root / "receipts" / "reference" / "v0-virus.json"
+            receipt.parent.mkdir(parents=True)
+            receipt.write_text("{}\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
+            head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+            receipt.write_text('{"changed":true}\n', encoding="utf-8")
+            currentness, reason = _source_currentness(root, head, head)
+            self.assertEqual(currentness, "STALE")
+            self.assertEqual(reason, "working_tree_research_input_dirty")
+
     def test_current_repository_reports_truthful_lifecycle_state(self):
         payload = build_current_receipt(ROOT)
         self.assertIn(
@@ -100,17 +177,45 @@ class ResearchQATests(unittest.TestCase):
 
     def test_degraded_witness_cannot_pass(self):
         runs = {name: run_receipt("a" * 40) for name in ("virus", "meme", "agent")}
-        witness = {"source_commit": "a" * 40, "status": "DEGRADED"}
+        witness = valid_witness("a" * 40)
+        witness["status"] = "DEGRADED"
         out = evaluate_research_contract(BASE_CONTRACT, runs, witness, source_commit="a" * 40)
         self.assertEqual(out["contract_status"], "DEGRADED")
         self.assertEqual(out["authority"], "NONE")
 
     def test_witness_commit_mismatch_fails_closed(self):
         runs = {name: run_receipt("a" * 40) for name in ("virus", "meme", "agent")}
-        witness = {"source_commit": "b" * 40, "status": "VERIFIED"}
+        witness = valid_witness("b" * 40)
         out = evaluate_research_contract(BASE_CONTRACT, runs, witness, source_commit="a" * 40)
         self.assertEqual(out["contract_status"], "FAIL")
         self.assertEqual(out["reason"], "witness_commit_mismatch")
+
+    def test_stored_research_receipt_never_points_to_unbound_evidence(self):
+        receipt_path = ROOT / "receipts" / "research-qa" / "v0.json"
+        if not receipt_path.is_file():
+            return
+        qa = json.loads(receipt_path.read_text(encoding="utf-8"))
+        storage_head = qa["storage_head"]
+        source_commit = qa["source_commit"]
+        for relpath in (
+            "receipts/reference/v0-virus.json",
+            "receipts/reference/v0-meme.json",
+            "receipts/reference/v0-agent.json",
+            "receipts/reference/v0-controls.json",
+            "receipts/independent/wolfram-v0.json",
+        ):
+            raw = subprocess.check_output(
+                ["git", "show", f"{storage_head}:{relpath}"],
+                cwd=ROOT,
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+            evidence = json.loads(raw)
+            self.assertEqual(
+                evidence["source_commit"],
+                source_commit,
+                f"{relpath} at storage_head is not bound to the claimed source",
+            )
 
     def test_endpoint_exit_code_matches_reported_contract_state(self):
         check = ROOT / "tools" / "research" / "check"
