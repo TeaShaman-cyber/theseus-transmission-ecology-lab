@@ -37,9 +37,13 @@ def _root_from_graph_path(graph_path: Path) -> Path:
     return graph_path.parents[2]
 
 
-def _initial_state(node_count: int, variant_count: int) -> np.ndarray:
+def _initial_state(
+    node_count: int, variant_count: int, *, initial_mass: float = 1.0
+) -> np.ndarray:
+    if not np.isfinite(initial_mass) or initial_mass <= 0:
+        raise ValueError("initial_mass must be finite and positive")
     state = np.zeros(node_count * variant_count, dtype=float)
-    state[0] = 1.0
+    state[0] = float(initial_mass)
     return state
 
 
@@ -59,6 +63,8 @@ def run_substrate(
     params_path: Path | str,
     horizon: int,
     source_commit: str,
+    *,
+    initial_mass: float = 1.0,
 ) -> dict:
     if name not in ADAPTERS:
         raise ValueError(f"unknown substrate: {name}")
@@ -69,7 +75,9 @@ def run_substrate(
     params = _load_json(params_path)
     variants = validate_variants(params)
     K = ADAPTERS[name].build_operator(graph, params)
-    x0 = _initial_state(len(graph.nodes), len(variants))
+    x0 = _initial_state(
+        len(graph.nodes), len(variants), initial_mass=initial_mass
+    )
     states = simulate(K, x0, horizon)
     perturbed_final = _perturbed_final(
         K, states, node_count=len(graph.nodes), variant_count=len(variants), horizon=horizon
@@ -196,7 +204,14 @@ def write_reference_set(root: Path | str, out: Path | str, *, horizon: int, sour
     outputs = {}
     for name in ("virus", "meme", "agent"):
         params_path = root / "experiments" / "v0" / "parameters" / f"{name}.json"
-        receipt = run_substrate(name, graph_path, params_path, horizon, source_commit)
+        receipt = run_substrate(
+            name,
+            graph_path,
+            params_path,
+            horizon,
+            source_commit,
+            initial_mass=float(controls["run_initial_mass"]),
+        )
         receipt["controls"] = {
             "all_passed": control_receipt["all_passed"],
             "control_receipt": "v0-controls.json",

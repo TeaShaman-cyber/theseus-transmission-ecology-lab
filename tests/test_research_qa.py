@@ -82,6 +82,7 @@ BASE_BINDINGS = {
         "supercritical_target_radius": 1.2,
         "variant_count": 2,
         "horizon": 8,
+        "run_initial_mass": 1.0,
     },
 }
 
@@ -329,6 +330,24 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["contract_status"], "FAIL")
         self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
         self.assertIn("virus.horizon", out["mismatched"])
+
+    def test_mass_trace_initial_value_must_match_source_initial_mass(self):
+        runs = valid_runs()
+        runs["virus"]["metrics"]["total_mass_by_step"] = [999.0] * 9
+        runs["virus"]["metrics"]["time_to_extinction_or_horizon"] = 8
+        out = evaluate(runs=runs)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
+        self.assertIn("virus.metrics.total_mass_by_step", out["mismatched"])
+
+    def test_dominant_share_must_be_consistent_with_source_variant_count(self):
+        runs = valid_runs()
+        runs["virus"]["metrics"]["surviving_variant_count"] = 2
+        runs["virus"]["metrics"]["dominant_variant_share"] = 0.0
+        out = evaluate(runs=runs)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
+        self.assertIn("virus.metrics.dominant_variant_share", out["mismatched"])
 
     def test_run_receipt_wrong_authority_fails_closed(self):
         runs = valid_runs()

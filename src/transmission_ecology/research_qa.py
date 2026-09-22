@@ -65,6 +65,7 @@ def _validate_metric_values(
     expected_cycle_rank_beta1: int | None,
     expected_variant_count: int,
     expected_horizon: int,
+    expected_initial_mass: float,
 ) -> list[str]:
     mismatches: list[str] = []
 
@@ -132,6 +133,13 @@ def _validate_metric_values(
         and all(_finite_nonnegative_number(item) for item in mass_trace)
         and _nonnegative_int(extinction)
     ):
+        if not math.isclose(
+            float(mass_trace[0]),
+            float(expected_initial_mass),
+            rel_tol=1e-12,
+            abs_tol=1e-12,
+        ):
+            mismatches.append("total_mass_by_step")
         expected_extinction = horizon
         for index, mass in enumerate(mass_trace):
             if float(mass) <= 1e-12:
@@ -139,6 +147,23 @@ def _validate_metric_values(
                 break
         if extinction != expected_extinction:
             mismatches.append("time_to_extinction_or_horizon")
+
+        dominant = metrics.get("dominant_variant_share")
+        surviving = metrics.get("surviving_variant_count")
+        final_mass = float(mass_trace[-1])
+        if (
+            _finite_nonnegative_number(dominant)
+            and _nonnegative_int(surviving)
+        ):
+            if final_mass == 0.0:
+                if float(dominant) != 0.0 or surviving != 0:
+                    mismatches.append("dominant_variant_share")
+            else:
+                lower_bound = 1.0 / expected_variant_count
+                if float(dominant) + 1e-12 < lower_bound:
+                    mismatches.append("dominant_variant_share")
+                if surviving == 0 and final_mass > expected_variant_count * 1e-12:
+                    mismatches.append("surviving_variant_count")
 
     rho = metrics.get("spectral_radius")
     regime = metrics.get("subcritical_or_supercritical")
@@ -240,7 +265,12 @@ def evaluate_research_contract(
         return _status("FAIL", "invalid_independent_witness_contract")
 
     expected_horizon = expected_control.get("horizon")
-    if not _nonnegative_int(expected_horizon):
+    expected_initial_mass = expected_control.get("run_initial_mass")
+    if (
+        not _nonnegative_int(expected_horizon)
+        or not _finite_nonnegative_number(expected_initial_mass)
+        or float(expected_initial_mass) <= 0.0
+    ):
         return _status("FAIL", "invalid_evidence_binding_contract")
 
     run_mismatches = []
@@ -281,6 +311,7 @@ def evaluate_research_contract(
                 expected_cycle_rank_beta1=expected_cycle_rank_beta1,
                 expected_variant_count=expected_variant_count,
                 expected_horizon=expected_horizon,
+                expected_initial_mass=float(expected_initial_mass),
             ):
                 run_mismatches.append(f"{name}.metrics.{metric}")
 
@@ -735,6 +766,7 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
             "supercritical_target_radius": controls_data.get("supercritical_target_radius"),
             "variant_count": controls_data.get("variant_count"),
             "horizon": controls_data.get("horizon"),
+            "run_initial_mass": controls_data.get("run_initial_mass"),
         },
     }
 
