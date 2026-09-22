@@ -1,0 +1,43 @@
+name: deterministic-v0-replay
+
+on:
+  workflow_dispatch:
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install current head
+        run: python -m pip install -e .
+      - name: Repository QA
+        run: tools/dev/check
+      - name: Replay exact execution commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_commit=$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+          print(json.loads(Path('receipts/reference/v0-virus.json').read_text())['source_commit'])
+          PY
+          )
+          source_dir="$RUNNER_TEMP/v0-source"
+          git worktree add --detach "$source_dir" "$source_commit"
+          python -m pip install -e "$source_dir"
+          (cd "$source_dir" && tools/run-v0)
+          diff -ru receipts/reference "$source_dir/receipts/reference"
+      - name: Research contract QA
+        run: tools/research/check --output receipts/research-qa/v0.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deterministic-v0-receipts
+          path: |
+            receipts/reference/*.json
+            receipts/research-qa/v0.json
+            receipts/independent/wolfram-v0.json

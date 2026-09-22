@@ -25,6 +25,21 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("spectral_radius", receipt["metrics"])
         self.assertIn("variant_shannon_entropy", receipt["metrics"])
 
+    def test_committed_reference_receipts_bind_current_frozen_inputs(self):
+        contract = ROOT / "experiments" / "v0" / "contract.json"
+        graph = ROOT / "experiments" / "v0" / "shared-graph.json"
+        expected_contract = sha256_file(contract)
+        expected_graph = sha256_file(graph)
+        for name in ("virus", "meme", "agent"):
+            receipt = json.loads((ROOT / "receipts" / "reference" / f"v0-{name}.json").read_text())
+            params = ROOT / "experiments" / "v0" / "parameters" / f"{name}.json"
+            self.assertEqual(receipt["contract_sha256"], expected_contract)
+            self.assertEqual(receipt["graph_sha256"], expected_graph)
+            self.assertEqual(receipt["parameters_sha256"], sha256_file(params))
+        controls = json.loads((ROOT / "receipts" / "reference" / "v0-controls.json").read_text())
+        self.assertEqual(controls["graph_sha256"], expected_graph)
+        self.assertEqual(controls["parameters_sha256"], sha256_file(ROOT / "experiments" / "v0" / "controls.json"))
+
     def test_reference_set_is_byte_deterministic_for_same_source_commit(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)
