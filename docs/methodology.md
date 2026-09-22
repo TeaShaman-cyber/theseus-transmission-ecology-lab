@@ -52,3 +52,9 @@ bytes for the same committed experiment inputs and runtime dependency versions.
 The policy is declared in experiments/v0/contract.json and bound into run and
 control receipts. Nonfinite values fail closed instead of serializing as NaN or
 Infinity.
+
+Reverification note: after receipt schema v2 introduced cross-runtime numeric
+canonicalization, the independent Wolfram calculation was rerun against the
+unchanged graph and controls inputs and bound to execution commit
+`2bfe18806ddb182d7869d11876d5cbaa57c20c16`. The mathematical results
+remained unchanged.

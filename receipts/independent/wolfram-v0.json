@@ -1,11 +1,12 @@
 {
   "schema_version": 1,
   "experiment_id": "deterministic-v0",
-  "source_commit": "ba251bc9238242dbab9e392e3d5b6c7cf2a5de64",
+  "source_commit": "2bfe18806ddb182d7869d11876d5cbaa57c20c16",
   "status": "VERIFIED",
   "authority": "NONE",
   "backend": "WolframLanguageEvaluator",
   "scope": "independent mathematical cross-check only; no scientific isomorphism judgment",
+  "reverification_context": "Independent rerun after receipt schema v2 numeric canonicalization; graph and controls input hashes are unchanged.",
   "inputs": {
     "graph_sha256": "97b57eb5e2070a31370793e126f73585232c2d2211f8ea9823cfd29879d26e49",
     "controls_sha256": "98037b8afa4db6c8e573b82652e96e79022dd139d91b2c4f62b91b7e2ca4b578"

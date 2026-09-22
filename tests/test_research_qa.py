@@ -85,12 +85,15 @@ class ResearchQATests(unittest.TestCase):
 
     def test_current_repository_reports_truthful_lifecycle_state(self):
         payload = build_current_receipt(ROOT)
-        self.assertNotEqual(payload["source_commit"], payload["storage_head"])
         self.assertIn(
             payload["source_currentness"],
-            {"BOUND_UNCHANGED_SURFACE", "STALE"},
+            {"CURRENT", "BOUND_UNCHANGED_SURFACE", "STALE"},
         )
-        if payload["source_currentness"] == "BOUND_UNCHANGED_SURFACE":
+        if payload["source_currentness"] == "CURRENT":
+            self.assertEqual(payload["source_commit"], payload["storage_head"])
+            self.assertEqual(payload["contract_status"], "PASS")
+        elif payload["source_currentness"] == "BOUND_UNCHANGED_SURFACE":
+            self.assertNotEqual(payload["source_commit"], payload["storage_head"])
             self.assertEqual(payload["contract_status"], "PASS")
         else:
             self.assertEqual(payload["contract_status"], "UNKNOWN")
