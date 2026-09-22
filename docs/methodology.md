@@ -64,3 +64,10 @@ validation, dirty-evidence provenance, and reference-write semantics, the
 Wolfram calculation was rerun independently and bound to execution commit
 `0e9929a365235b990aca93827034b68118d70ea7`. Graph and controls hashes
 remain unchanged and all required mathematical checks reproduced.
+
+Third reverification note: after exact-head review required explicit independent-backend identity,
+duplicate scientific-authority validation, and source-bound run horizons, the witness contract
+preregistered `WolframLanguageEvaluator`. The graph/Hodge/spectral calculation was rerun through
+the MarcoPolo mcporter Wolfram route and bound to execution commit
+`9aea5dfb5642cc2fcebac1f4eba6f6dd7d72b4ad`. The graph and controls hashes were unchanged and
+the required mathematical checks reproduced.
