@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "horizon": 8,
+  "variant_count": 2,
+  "subcritical_target_radius": 0.8,
+  "supercritical_target_radius": 1.2
+}

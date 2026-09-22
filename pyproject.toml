@@ -7,7 +7,7 @@ name = "theseus-transmission-ecology"
 version = "0.1.0"
 description = "Deterministic cross-substrate transmission ecology experiments."
 requires-python = ">=3.11"
-dependencies = ["numpy>=1.26,<3"]
+dependencies = ["numpy==2.4.3"]
 
 [project.scripts]
 transmission-ecology = "transmission_ecology.cli:main"
