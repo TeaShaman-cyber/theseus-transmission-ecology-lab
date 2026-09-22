@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "experiment_id": "deterministic-v0",
+  "question": "Which declared transmission-dynamics invariants remain useful when the substrate changes from virus to meme to AI-agent systems?",
+  "hypothesis": "Selected operator-level invariants remain comparable across substrates without implying microscopic mechanism identity.",
+  "falsifiers": [
+    "The shared operator family fails to reproduce qualitative threshold behavior across substrates.",
+    "Shared metrics add no explanatory value beyond substrate-specific baselines.",
+    "A common representation erases mechanisms strongly enough to make the comparison misleading.",
+    "Diversity or monoculture conclusions depend on one arbitrary metric choice.",
+    "Topology alone appears predictive after the topology-only negative control."
+  ],
+  "declared_metrics": [
+    "spectral_radius",
+    "cycle_rank_beta1",
+    "total_mass_by_step",
+    "variant_shannon_entropy",
+    "surviving_variant_count",
+    "dominant_variant_share",
+    "time_to_extinction_or_horizon",
+    "perturbation_recovery_ratio"
+  ],
+  "required_controls": [
+    "subcritical",
+    "supercritical",
+    "topology_only"
+  ],
+  "limitations": [
+    "linear deterministic model only",
+    "no stochastic epidemic process",
+    "no influenza coinfection or reassortment",
+    "no repeated-exposure complex contagion",
+    "no multi-artifact agent composition",
+    "no endogenous graph rewiring",
+    "no real-world causal inference"
+  ],
+  "independent_witness": {
+    "required": true,
+    "kind": "spectral_or_hodge"
+  },
+  "allowed_dispositions": [
+    "FOUND_USEFUL_STRUCTURE",
+    "NO_SIGNAL",
+    "REFINE",
+    "REJECT",
+    "UNKNOWN_WITHIN_CURRENT_CONTRACT"
+  ]
+}
