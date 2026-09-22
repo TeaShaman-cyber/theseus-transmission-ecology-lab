@@ -111,7 +111,7 @@ def run_receipt(
             "spectral_radius": 0.8,
             "cycle_rank_beta1": 2,
             "total_mass_by_step": [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2],
-            "variant_shannon_entropy": 0.5,
+            "variant_shannon_entropy": 0.562335144619,
             "surviving_variant_count": 2,
             "dominant_variant_share": 0.75,
             "time_to_extinction_or_horizon": 8,
@@ -348,6 +348,26 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["contract_status"], "FAIL")
         self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
         self.assertIn("virus.metrics.dominant_variant_share", out["mismatched"])
+
+    def test_dominant_share_must_respect_reported_survivor_count(self):
+        runs = valid_runs()
+        runs["virus"]["metrics"]["surviving_variant_count"] = 1
+        runs["virus"]["metrics"]["dominant_variant_share"] = 0.5
+        runs["virus"]["metrics"]["variant_shannon_entropy"] = 0.0
+        out = evaluate(runs=runs)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
+        self.assertIn("virus.metrics.dominant_variant_share", out["mismatched"])
+
+    def test_entropy_must_be_jointly_consistent_with_dominant_share(self):
+        runs = valid_runs()
+        runs["virus"]["metrics"]["surviving_variant_count"] = 2
+        runs["virus"]["metrics"]["dominant_variant_share"] = 0.5
+        runs["virus"]["metrics"]["variant_shannon_entropy"] = 0.0
+        out = evaluate(runs=runs)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
+        self.assertIn("virus.metrics.variant_shannon_entropy", out["mismatched"])
 
     def test_run_receipt_wrong_authority_fails_closed(self):
         runs = valid_runs()

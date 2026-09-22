@@ -5,6 +5,9 @@ import math
 import numpy as np
 
 
+SURVIVAL_TOLERANCE = 1e-12
+
+
 def _as_nonnegative_state(state, *, node_count: int, variant_count: int) -> np.ndarray:
     if isinstance(node_count, bool) or not isinstance(node_count, int) or node_count <= 0:
         raise ValueError("node_count must be a positive integer")
@@ -53,7 +56,13 @@ def dominant_variant_share(state, node_count: int, variant_count: int) -> float:
     return float(masses.max() / total)
 
 
-def surviving_variant_count(state, node_count: int, variant_count: int, *, tolerance: float = 1e-12) -> int:
+def surviving_variant_count(
+    state,
+    node_count: int,
+    variant_count: int,
+    *,
+    tolerance: float = SURVIVAL_TOLERANCE,
+) -> int:
     if not math.isfinite(tolerance) or tolerance < 0:
         raise ValueError("tolerance must be finite and nonnegative")
     masses = _variant_masses(state, node_count, variant_count)
@@ -76,7 +85,9 @@ def perturbation_recovery_ratio(baseline_final, perturbed_final) -> float:
     return max(0.0, min(1.0, ratio))
 
 
-def time_to_extinction_or_horizon(states, *, tolerance: float = 1e-12) -> int:
+def time_to_extinction_or_horizon(
+    states, *, tolerance: float = SURVIVAL_TOLERANCE
+) -> int:
     if not states:
         raise ValueError("states must be non-empty")
     if not math.isfinite(tolerance) or tolerance < 0:

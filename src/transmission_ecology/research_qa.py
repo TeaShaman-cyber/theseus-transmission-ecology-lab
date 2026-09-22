@@ -9,6 +9,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from transmission_ecology.metrics import SURVIVAL_TOLERANCE
+
 REQUIRED_RUNS = ("virus", "meme", "agent")
 EXPERIMENT_SURFACE_PATHS = (
     "pyproject.toml",
@@ -117,13 +119,6 @@ def _validate_metric_values(
         if not valid:
             mismatches.append(metric)
 
-    entropy = metrics.get("variant_shannon_entropy")
-    surviving = metrics.get("surviving_variant_count")
-    if _finite_nonnegative_number(entropy) and _nonnegative_int(surviving):
-        entropy_upper = 0.0 if surviving == 0 else math.log(surviving)
-        if float(entropy) > entropy_upper + 1e-12:
-            mismatches.append("variant_shannon_entropy")
-
     mass_trace = metrics.get("total_mass_by_step")
     extinction = metrics.get("time_to_extinction_or_horizon")
     if (
@@ -142,7 +137,7 @@ def _validate_metric_values(
             mismatches.append("total_mass_by_step")
         expected_extinction = horizon
         for index, mass in enumerate(mass_trace):
-            if float(mass) <= 1e-12:
+            if float(mass) <= SURVIVAL_TOLERANCE:
                 expected_extinction = index
                 break
         if extinction != expected_extinction:
@@ -150,20 +145,74 @@ def _validate_metric_values(
 
         dominant = metrics.get("dominant_variant_share")
         surviving = metrics.get("surviving_variant_count")
+        entropy = metrics.get("variant_shannon_entropy")
         final_mass = float(mass_trace[-1])
         if (
             _finite_nonnegative_number(dominant)
             and _nonnegative_int(surviving)
+            and _finite_nonnegative_number(entropy)
         ):
+            pmax = float(dominant)
+            entropy_value = float(entropy)
+            compare_tol = 1e-10
+
             if final_mass == 0.0:
-                if float(dominant) != 0.0 or surviving != 0:
+                if pmax != 0.0:
                     mismatches.append("dominant_variant_share")
-            else:
-                lower_bound = 1.0 / expected_variant_count
-                if float(dominant) + 1e-12 < lower_bound:
-                    mismatches.append("dominant_variant_share")
-                if surviving == 0 and final_mass > expected_variant_count * 1e-12:
+                if surviving != 0:
                     mismatches.append("surviving_variant_count")
+                if entropy_value != 0.0:
+                    mismatches.append("variant_shannon_entropy")
+            else:
+                if surviving == 0:
+                    if final_mass > expected_variant_count * SURVIVAL_TOLERANCE:
+                        mismatches.append("surviving_variant_count")
+                else:
+                    if final_mass <= SURVIVAL_TOLERANCE:
+                        mismatches.append("surviving_variant_count")
+                    nonsurvivor_budget = (
+                        expected_variant_count - surviving
+                    ) * SURVIVAL_TOLERANCE
+                    survivor_mass_floor = max(
+                        0.0, final_mass - nonsurvivor_budget
+                    )
+                    survivor_share_floor = (
+                        survivor_mass_floor / (surviving * final_mass)
+                    )
+                    if pmax + compare_tol < survivor_share_floor:
+                        mismatches.append("dominant_variant_share")
+
+                if pmax <= 0.0:
+                    mismatches.append("dominant_variant_share")
+                else:
+                    inverse = 1.0 / pmax
+                    full_bins = min(
+                        expected_variant_count,
+                        max(1, int(math.floor(inverse + 1e-12))),
+                    )
+                    remainder = max(0.0, 1.0 - full_bins * pmax)
+                    entropy_min = -full_bins * pmax * math.log(pmax)
+                    if remainder > 0.0:
+                        entropy_min -= remainder * math.log(remainder)
+
+                    if expected_variant_count == 1:
+                        entropy_max = 0.0
+                    elif pmax >= 1.0:
+                        entropy_max = 0.0
+                    else:
+                        remainder_each = (1.0 - pmax) / (
+                            expected_variant_count - 1
+                        )
+                        entropy_max = -pmax * math.log(pmax)
+                        if remainder_each > 0.0:
+                            entropy_max -= (
+                                expected_variant_count - 1
+                            ) * remainder_each * math.log(remainder_each)
+
+                    if entropy_value + compare_tol < entropy_min:
+                        mismatches.append("variant_shannon_entropy")
+                    if entropy_value > entropy_max + compare_tol:
+                        mismatches.append("variant_shannon_entropy")
 
     rho = metrics.get("spectral_radius")
     regime = metrics.get("subcritical_or_supercritical")
