@@ -133,17 +133,42 @@ def run_controls(
         "initial_mass": float(high_states[0].sum()),
         "final_mass": float(high_states[-1].sum()),
     }
+    graph_hash = sha256_file(graph_path)
+    beta1 = cycle_rank_beta1(graph)
+    low_regime = (
+        "decay"
+        if low_check["final_mass"] < low_check["initial_mass"]
+        else "non_decay"
+    )
+    high_regime = (
+        "growth"
+        if high_check["final_mass"] > high_check["initial_mass"]
+        else "non_growth"
+    )
+    same_topology = True
+    opposite_regimes = low_regime == "decay" and high_regime == "growth"
     topology = {
-        "cycle_rank_beta1": cycle_rank_beta1(graph),
-        "same_graph": True,
-        "graph_sha256": sha256_file(graph_path),
+        "graph_sha256": graph_hash,
+        "subcritical_graph_sha256": graph_hash,
+        "supercritical_graph_sha256": graph_hash,
+        "cycle_rank_beta1": beta1,
+        "subcritical_cycle_rank_beta1": beta1,
+        "supercritical_cycle_rank_beta1": beta1,
+        "subcritical_regime": low_regime,
+        "supercritical_regime": high_regime,
+        "same_topology": same_topology,
+        "opposite_regimes": opposite_regimes,
+        "topology_only_explanation_rejected": (
+            same_topology and opposite_regimes
+        ),
     }
     all_passed = (
         low_check["spectral_radius"] < 1.0
-        and low_check["final_mass"] < low_check["initial_mass"]
+        and low_regime == "decay"
         and high_check["spectral_radius"] > 1.0
-        and high_check["final_mass"] > high_check["initial_mass"]
+        and high_regime == "growth"
         and topology["cycle_rank_beta1"] == 2
+        and topology["topology_only_explanation_rejected"]
     )
     return {
         "schema_version": RECEIPT_SCHEMA_VERSION,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import subprocess
 import tempfile
@@ -41,6 +42,15 @@ def _validate_receipt_policy(receipt: dict, receipt_contract: dict) -> bool:
         receipt.get("schema_version") == receipt_contract.get("schema_version")
         and receipt.get("numeric_policy", {}).get("float_significant_digits")
         == receipt_contract.get("float_significant_digits")
+    )
+
+
+def _finite_nonnegative_number(value) -> bool:
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and math.isfinite(float(value))
+        and float(value) >= 0.0
     )
 
 
@@ -173,8 +183,6 @@ def evaluate_research_contract(
     for field in ("graph_sha256", "parameters_sha256"):
         if control_receipt.get(field) != expected_control.get(field):
             control_mismatches.append(field)
-    if control_receipt.get("all_passed") is not True:
-        control_mismatches.append("all_passed")
 
     required_controls = contract.get("required_controls")
     if (
@@ -187,10 +195,160 @@ def evaluate_research_contract(
     observed_checks = control_receipt.get("checks")
     if not isinstance(observed_checks, dict):
         control_mismatches.append("checks")
+        observed_checks = {}
     else:
         for name in required_controls:
             if name not in observed_checks:
                 control_mismatches.append(f"checks.{name}")
+
+    def numeric_fields(check_name: str, fields: tuple[str, ...]):
+        check = observed_checks.get(check_name)
+        if not isinstance(check, dict):
+            if check_name in required_controls:
+                control_mismatches.append(f"checks.{check_name}")
+            return None
+        values = {}
+        for field in fields:
+            value = check.get(field)
+            if not _finite_nonnegative_number(value):
+                control_mismatches.append(f"checks.{check_name}.{field}")
+            else:
+                values[field] = float(value)
+        return values if len(values) == len(fields) else None
+
+    low = numeric_fields(
+        "subcritical",
+        ("spectral_radius", "initial_mass", "final_mass"),
+    )
+    high = numeric_fields(
+        "supercritical",
+        ("spectral_radius", "initial_mass", "final_mass"),
+    )
+
+    low_pass = False
+    if low is not None:
+        if not low["spectral_radius"] < 1.0:
+            control_mismatches.append(
+                "checks.subcritical.spectral_radius_lt_1"
+            )
+        if not low["final_mass"] < low["initial_mass"]:
+            control_mismatches.append("checks.subcritical.decay")
+        low_pass = (
+            low["spectral_radius"] < 1.0
+            and low["final_mass"] < low["initial_mass"]
+        )
+
+    high_pass = False
+    if high is not None:
+        if not high["spectral_radius"] > 1.0:
+            control_mismatches.append(
+                "checks.supercritical.spectral_radius_gt_1"
+            )
+        if not high["final_mass"] > high["initial_mass"]:
+            control_mismatches.append("checks.supercritical.growth")
+        high_pass = (
+            high["spectral_radius"] > 1.0
+            and high["final_mass"] > high["initial_mass"]
+        )
+
+    topology = observed_checks.get("topology_only")
+    topology_pass = False
+    if not isinstance(topology, dict):
+        if "topology_only" in required_controls:
+            control_mismatches.append("checks.topology_only")
+    else:
+        expected_graph = expected_control.get("graph_sha256")
+        for field in (
+            "graph_sha256",
+            "subcritical_graph_sha256",
+            "supercritical_graph_sha256",
+        ):
+            if topology.get(field) != expected_graph:
+                control_mismatches.append(
+                    f"checks.topology_only.{field}"
+                )
+
+        beta_fields = (
+            "cycle_rank_beta1",
+            "subcritical_cycle_rank_beta1",
+            "supercritical_cycle_rank_beta1",
+        )
+        beta_values = {}
+        for field in beta_fields:
+            value = topology.get(field)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+            ):
+                control_mismatches.append(
+                    f"checks.topology_only.{field}"
+                )
+            else:
+                beta_values[field] = value
+
+        beta_consistent = (
+            len(beta_values) == len(beta_fields)
+            and len(set(beta_values.values())) == 1
+        )
+        if not beta_consistent:
+            control_mismatches.append(
+                "checks.topology_only.beta1_consistency"
+            )
+
+        if beta_consistent:
+            expected_beta = beta_values["cycle_rank_beta1"]
+            for name, receipt in run_receipts.items():
+                if (
+                    receipt.get("metrics", {}).get("cycle_rank_beta1")
+                    != expected_beta
+                ):
+                    control_mismatches.append(
+                        f"{name}.metrics.cycle_rank_beta1_consistency"
+                    )
+
+        same_topology = (
+            topology.get("subcritical_graph_sha256") == expected_graph
+            and topology.get("supercritical_graph_sha256")
+            == expected_graph
+            and beta_consistent
+        )
+        low_regime = "decay" if low_pass else "non_decay"
+        high_regime = "growth" if high_pass else "non_growth"
+        opposite_regimes = low_pass and high_pass
+
+        if topology.get("subcritical_regime") != low_regime:
+            control_mismatches.append(
+                "checks.topology_only.subcritical_regime"
+            )
+        if topology.get("supercritical_regime") != high_regime:
+            control_mismatches.append(
+                "checks.topology_only.supercritical_regime"
+            )
+        if topology.get("same_topology") is not same_topology:
+            control_mismatches.append(
+                "checks.topology_only.same_topology"
+            )
+        if topology.get("opposite_regimes") is not opposite_regimes:
+            control_mismatches.append(
+                "checks.topology_only.opposite_regimes"
+            )
+
+        rejected = same_topology and opposite_regimes
+        if (
+            topology.get("topology_only_explanation_rejected")
+            is not rejected
+        ):
+            control_mismatches.append(
+                "checks.topology_only.topology_only_explanation_rejected"
+            )
+        topology_pass = rejected
+
+    derived_all_passed = low_pass and high_pass and topology_pass
+    if control_receipt.get("all_passed") is not derived_all_passed:
+        control_mismatches.append("all_passed")
+    if not derived_all_passed:
+        control_mismatches.append("required_control_failed")
 
     if control_mismatches:
         return _status(
@@ -227,6 +385,21 @@ def evaluate_research_contract(
         if not isinstance(observed_inputs, dict):
             witness_mismatches.append("inputs")
         else:
+            source_bound_inputs = {
+                "graph_sha256": expected_control.get("graph_sha256"),
+                "controls_sha256": expected_control.get(
+                    "parameters_sha256"
+                ),
+            }
+            for key, source_expected in source_bound_inputs.items():
+                if expected_inputs.get(key) != source_expected:
+                    witness_mismatches.append(
+                        f"contract.expected_inputs.{key}.source_binding"
+                    )
+                if observed_inputs.get(key) != source_expected:
+                    witness_mismatches.append(
+                        f"inputs.{key}.source_binding"
+                    )
             for key, expected in expected_inputs.items():
                 if observed_inputs.get(key) != expected:
                     witness_mismatches.append(f"inputs.{key}")

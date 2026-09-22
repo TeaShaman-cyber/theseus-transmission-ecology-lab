@@ -117,9 +117,29 @@ def valid_control_receipt(commit: str = COMMIT_A):
         "scientific_authority": "NONE",
         "all_passed": True,
         "checks": {
-            "subcritical": {"spectral_radius": 0.8},
-            "supercritical": {"spectral_radius": 1.2},
-            "topology_only": {"same_graph": True},
+            "subcritical": {
+                "spectral_radius": 0.8,
+                "initial_mass": 1.0,
+                "final_mass": 0.5,
+            },
+            "supercritical": {
+                "spectral_radius": 1.2,
+                "initial_mass": 1.0,
+                "final_mass": 2.0,
+            },
+            "topology_only": {
+                "graph_sha256": "graph-ok",
+                "subcritical_graph_sha256": "graph-ok",
+                "supercritical_graph_sha256": "graph-ok",
+                "cycle_rank_beta1": 2,
+                "subcritical_cycle_rank_beta1": 2,
+                "supercritical_cycle_rank_beta1": 2,
+                "subcritical_regime": "decay",
+                "supercritical_regime": "growth",
+                "same_topology": True,
+                "opposite_regimes": True,
+                "topology_only_explanation_rejected": True,
+            },
         },
     }
 
@@ -252,6 +272,37 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["reason"], "control_receipt_binding_mismatch")
         self.assertIn("checks.topology_only", out["mismatched"])
 
+    def test_control_receipt_empty_named_checks_fail_closed(self):
+        control = valid_control_receipt()
+        control["checks"] = {
+            "subcritical": {},
+            "supercritical": {},
+            "topology_only": {},
+        }
+        out = evaluate(control=control)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "control_receipt_binding_mismatch")
+        self.assertIn("checks.subcritical.spectral_radius", out["mismatched"])
+        self.assertIn("checks.supercritical.spectral_radius", out["mismatched"])
+
+    def test_control_receipt_false_mass_direction_fails_closed(self):
+        control = valid_control_receipt()
+        control["checks"]["subcritical"] = {
+            "spectral_radius": 0.8,
+            "initial_mass": 1.0,
+            "final_mass": 2.0,
+        }
+        control["checks"]["supercritical"] = {
+            "spectral_radius": 1.2,
+            "initial_mass": 1.0,
+            "final_mass": 0.5,
+        }
+        out = evaluate(control=control)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "control_receipt_binding_mismatch")
+        self.assertIn("checks.subcritical.decay", out["mismatched"])
+        self.assertIn("checks.supercritical.growth", out["mismatched"])
+
     def test_control_receipt_wrong_input_hash_fails_closed(self):
         control = valid_control_receipt()
         control["parameters_sha256"] = "wrong"
@@ -259,6 +310,32 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["contract_status"], "FAIL")
         self.assertEqual(out["reason"], "control_receipt_binding_mismatch")
         self.assertIn("parameters_sha256", out["mismatched"])
+
+    def test_witness_and_contract_cannot_collude_on_stale_source_hashes(self):
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["independent_witness"]["expected_inputs"] = {
+            "graph_sha256": "stale-graph",
+            "controls_sha256": "stale-controls",
+        }
+        witness = valid_witness()
+        witness["inputs"] = {
+            "graph_sha256": "stale-graph",
+            "controls_sha256": "stale-controls",
+        }
+        out = evaluate_research_contract(
+            contract,
+            valid_runs(),
+            valid_control_receipt(),
+            witness,
+            source_commit=COMMIT_A,
+            evidence_bindings=BASE_BINDINGS,
+        )
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "witness_content_mismatch")
+        self.assertTrue(
+            any(item.endswith(".source_binding") for item in out["mismatched"]),
+            out,
+        )
 
     def test_verified_witness_with_wrong_input_hash_fails_closed(self):
         witness = valid_witness()

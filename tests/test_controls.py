@@ -21,8 +21,18 @@ class ControlsTests(unittest.TestCase):
         self.assertGreater(receipt["checks"]["supercritical"]["spectral_radius"], 1.0)
         self.assertLess(receipt["checks"]["subcritical"]["final_mass"], receipt["checks"]["subcritical"]["initial_mass"])
         self.assertGreater(receipt["checks"]["supercritical"]["final_mass"], receipt["checks"]["supercritical"]["initial_mass"])
-        self.assertEqual(receipt["checks"]["topology_only"]["cycle_rank_beta1"], 2)
-        self.assertTrue(receipt["checks"]["topology_only"]["same_graph"])
+        topology = receipt["checks"]["topology_only"]
+        self.assertEqual(topology["cycle_rank_beta1"], 2)
+        self.assertEqual(
+            topology["subcritical_graph_sha256"],
+            topology["supercritical_graph_sha256"],
+        )
+        self.assertEqual(topology["graph_sha256"], topology["subcritical_graph_sha256"])
+        self.assertEqual(topology["subcritical_regime"], "decay")
+        self.assertEqual(topology["supercritical_regime"], "growth")
+        self.assertTrue(topology["same_topology"])
+        self.assertTrue(topology["opposite_regimes"])
+        self.assertTrue(topology["topology_only_explanation_rejected"])
 
 
 if __name__ == "__main__":
