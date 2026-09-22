@@ -97,3 +97,9 @@ receipt binds the exact source recipe digest rather than only naming the backend
 That exact recipe was executed through the MarcoPolo mcporter Wolfram route and
 bound to execution commit `a3db87d8aa5f2a4ecb91decfd1280990f97de9bc`.
 All required graph/Hodge/spectral checks reproduced.
+
+Eighth reverification note: after the execution-surface guard was extended to include
+the package initializer, the exact versioned Wolfram witness recipe was rerun through
+the MarcoPolo mcporter route and rebound to execution commit
+`b4497ec5c6c67afbbab5b6e69564ee1678a0e4bf`. The graph, controls, recipe digest,
+and all required mathematical results were unchanged.
