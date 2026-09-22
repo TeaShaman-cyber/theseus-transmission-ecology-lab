@@ -21,7 +21,16 @@ BASE_CONTRACT = {
     "question": "Which declared invariants survive substrate change?",
     "hypothesis": "Selected operator-level invariants remain comparable across substrates.",
     "falsifiers": ["shared metrics add no value beyond domain-specific baselines"],
-    "declared_metrics": ["spectral_radius", "cycle_rank_beta1"],
+    "declared_metrics": [
+        "spectral_radius",
+        "cycle_rank_beta1",
+        "total_mass_by_step",
+        "variant_shannon_entropy",
+        "surviving_variant_count",
+        "dominant_variant_share",
+        "time_to_extinction_or_horizon",
+        "perturbation_recovery_ratio",
+    ],
     "required_controls": ["subcritical", "supercritical", "topology_only"],
     "limitations": ["linear deterministic model only"],
     "independent_witness": {
@@ -88,9 +97,16 @@ def run_receipt(
         "graph_sha256": binding["graph_sha256"],
         "parameters_sha256": binding["parameters_sha256"],
         "scientific_authority": "NONE",
+        "horizon": 8,
         "metrics": {
             "spectral_radius": 0.8,
             "cycle_rank_beta1": 2,
+            "total_mass_by_step": [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2],
+            "variant_shannon_entropy": 0.5,
+            "surviving_variant_count": 2,
+            "dominant_variant_share": 0.75,
+            "time_to_extinction_or_horizon": 8,
+            "perturbation_recovery_ratio": 0.25,
         },
         "controls": {
             "all_passed": all_passed,
@@ -160,6 +176,12 @@ def valid_witness(commit: str = COMMIT_A):
             "hodge1_nullity": 2,
             "subcritical_below_one": True,
             "supercritical_above_one": True,
+        },
+        "observed": {
+            "cycle_rank_beta1": 2,
+            "hodge1_nullity": 2,
+            "subcritical_spectral_radius": 0.8,
+            "supercritical_spectral_radius": 1.2,
         },
     }
 
@@ -244,6 +266,33 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
         self.assertIn("virus.metrics.cycle_rank_beta1", out["mismatched"])
 
+    def test_declared_metric_values_fail_closed_on_corruption(self):
+        corruptions = {
+            "spectral_radius": None,
+            "cycle_rank_beta1": 2.5,
+            "total_mass_by_step": [1.0, float("nan")],
+            "variant_shannon_entropy": 10.0,
+            "surviving_variant_count": -1,
+            "dominant_variant_share": 1.5,
+            "time_to_extinction_or_horizon": 9,
+            "perturbation_recovery_ratio": -0.1,
+        }
+        for metric, bad_value in corruptions.items():
+            with self.subTest(metric=metric):
+                runs = valid_runs()
+                runs["virus"]["metrics"][metric] = bad_value
+                out = evaluate(runs=runs)
+                self.assertEqual(out["contract_status"], "FAIL", out)
+                self.assertEqual(out["reason"], "run_receipt_binding_mismatch", out)
+                self.assertIn(f"virus.metrics.{metric}", out["mismatched"], out)
+
+    def test_total_mass_shape_must_match_horizon(self):
+        runs = valid_runs()
+        runs["virus"]["metrics"]["total_mass_by_step"] = [1.0, 0.5]
+        out = evaluate(runs=runs)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertIn("virus.metrics.total_mass_by_step", out["mismatched"])
+
     def test_run_receipt_wrong_authority_fails_closed(self):
         runs = valid_runs()
         runs["virus"]["scientific_authority"] = "ACCEPT"
@@ -310,6 +359,31 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["contract_status"], "FAIL")
         self.assertEqual(out["reason"], "control_receipt_binding_mismatch")
         self.assertIn("parameters_sha256", out["mismatched"])
+
+    def test_coordinated_false_beta_cannot_pass_controls_and_runs(self):
+        runs = valid_runs()
+        for receipt in runs.values():
+            receipt["metrics"]["cycle_rank_beta1"] = 999
+        control = valid_control_receipt()
+        topology = control["checks"]["topology_only"]
+        for field in (
+            "cycle_rank_beta1",
+            "subcritical_cycle_rank_beta1",
+            "supercritical_cycle_rank_beta1",
+        ):
+            topology[field] = 999
+        out = evaluate(runs=runs, control=control)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
+        self.assertIn("virus.metrics.cycle_rank_beta1", out["mismatched"])
+
+    def test_witness_observed_cannot_contradict_verified_checks(self):
+        witness = valid_witness()
+        witness["observed"]["cycle_rank_beta1"] = 999
+        out = evaluate(witness=witness)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "witness_content_mismatch")
+        self.assertIn("observed.cycle_rank_beta1", out["mismatched"])
 
     def test_witness_and_contract_cannot_collude_on_stale_source_hashes(self):
         contract = json.loads(json.dumps(BASE_CONTRACT))

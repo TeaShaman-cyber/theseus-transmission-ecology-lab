@@ -54,6 +54,88 @@ def _finite_nonnegative_number(value) -> bool:
     )
 
 
+def _nonnegative_int(value) -> bool:
+    return not isinstance(value, bool) and isinstance(value, int) and value >= 0
+
+
+def _validate_metric_values(
+    metrics: dict,
+    declared_metrics: list[str],
+    receipt: dict,
+    *,
+    expected_cycle_rank_beta1: int | None,
+) -> list[str]:
+    mismatches: list[str] = []
+
+    horizon = receipt.get("horizon")
+    horizon_valid = _nonnegative_int(horizon)
+
+    validators = {
+        "spectral_radius",
+        "cycle_rank_beta1",
+        "total_mass_by_step",
+        "variant_shannon_entropy",
+        "surviving_variant_count",
+        "dominant_variant_share",
+        "time_to_extinction_or_horizon",
+        "perturbation_recovery_ratio",
+    }
+
+    for metric in declared_metrics:
+        if metric not in validators:
+            mismatches.append(metric)
+            continue
+        if metric not in metrics:
+            mismatches.append(metric)
+            continue
+
+        value = metrics.get(metric)
+        valid = False
+
+        if metric in ("spectral_radius", "variant_shannon_entropy"):
+            valid = _finite_nonnegative_number(value)
+        elif metric == "cycle_rank_beta1":
+            valid = _nonnegative_int(value)
+            if valid and expected_cycle_rank_beta1 is not None:
+                valid = value == expected_cycle_rank_beta1
+        elif metric == "total_mass_by_step":
+            valid = (
+                horizon_valid
+                and isinstance(value, list)
+                and len(value) == horizon + 1
+                and all(_finite_nonnegative_number(item) for item in value)
+            )
+        elif metric == "surviving_variant_count":
+            valid = _nonnegative_int(value)
+        elif metric in ("dominant_variant_share", "perturbation_recovery_ratio"):
+            valid = _finite_nonnegative_number(value) and float(value) <= 1.0
+        elif metric == "time_to_extinction_or_horizon":
+            valid = horizon_valid and _nonnegative_int(value) and value <= horizon
+
+        if not valid:
+            mismatches.append(metric)
+
+    entropy = metrics.get("variant_shannon_entropy")
+    surviving = metrics.get("surviving_variant_count")
+    if _finite_nonnegative_number(entropy) and _nonnegative_int(surviving):
+        entropy_upper = 0.0 if surviving == 0 else math.log(surviving)
+        if float(entropy) > entropy_upper + 1e-12:
+            mismatches.append("variant_shannon_entropy")
+
+    rho = metrics.get("spectral_radius")
+    regime = metrics.get("subcritical_or_supercritical")
+    if _finite_nonnegative_number(rho) and regime is not None:
+        expected_regime = (
+            "subcritical" if float(rho) < 1.0
+            else "supercritical" if float(rho) > 1.0
+            else "critical"
+        )
+        if regime != expected_regime:
+            mismatches.append("subcritical_or_supercritical")
+
+    return mismatches
+
+
 def evaluate_research_contract(
     contract,
     run_receipts,
@@ -124,6 +206,18 @@ def evaluate_research_contract(
     ):
         return _status("FAIL", "invalid_declared_metrics")
 
+    witness_contract = contract.get("independent_witness")
+    if not isinstance(witness_contract, dict):
+        return _status("FAIL", "invalid_independent_witness_contract")
+    required_witness_checks = witness_contract.get("required_checks")
+    if not isinstance(required_witness_checks, dict) or not required_witness_checks:
+        return _status("FAIL", "invalid_independent_witness_contract")
+    expected_cycle_rank_beta1 = required_witness_checks.get("cycle_rank_beta1")
+    if expected_cycle_rank_beta1 is not None and not _nonnegative_int(
+        expected_cycle_rank_beta1
+    ):
+        return _status("FAIL", "invalid_independent_witness_contract")
+
     run_mismatches = []
     for name in REQUIRED_RUNS:
         receipt = run_receipts[name]
@@ -146,9 +240,13 @@ def evaluate_research_contract(
         if not isinstance(metrics, dict):
             run_mismatches.append(f"{name}.metrics")
         else:
-            for metric in declared_metrics:
-                if metric not in metrics:
-                    run_mismatches.append(f"{name}.metrics.{metric}")
+            for metric in _validate_metric_values(
+                metrics,
+                declared_metrics,
+                receipt,
+                expected_cycle_rank_beta1=expected_cycle_rank_beta1,
+            ):
+                run_mismatches.append(f"{name}.metrics.{metric}")
 
         controls = receipt.get("controls")
         if not isinstance(controls, dict):
@@ -297,11 +395,18 @@ def evaluate_research_contract(
             )
 
         if beta_consistent:
-            expected_beta = beta_values["cycle_rank_beta1"]
+            observed_beta = beta_values["cycle_rank_beta1"]
+            if (
+                expected_cycle_rank_beta1 is not None
+                and observed_beta != expected_cycle_rank_beta1
+            ):
+                control_mismatches.append(
+                    "checks.topology_only.cycle_rank_beta1_independent"
+                )
             for name, receipt in run_receipts.items():
                 if (
                     receipt.get("metrics", {}).get("cycle_rank_beta1")
-                    != expected_beta
+                    != observed_beta
                 ):
                     control_mismatches.append(
                         f"{name}.metrics.cycle_rank_beta1_consistency"
@@ -357,7 +462,6 @@ def evaluate_research_contract(
             mismatched=sorted(set(control_mismatches)),
         )
 
-    witness_contract = contract["independent_witness"]
     if witness_contract.get("required"):
         if witness is None:
             return _status("UNKNOWN", "independent_witness_missing")
@@ -367,10 +471,8 @@ def evaluate_research_contract(
             return _status("DEGRADED", "witness_not_verified")
 
         expected_inputs = witness_contract.get("expected_inputs")
-        required_checks = witness_contract.get("required_checks")
+        required_checks = required_witness_checks
         if not isinstance(expected_inputs, dict) or not expected_inputs:
-            return _status("FAIL", "invalid_independent_witness_contract")
-        if not isinstance(required_checks, dict) or not required_checks:
             return _status("FAIL", "invalid_independent_witness_contract")
 
         witness_mismatches = []
@@ -411,6 +513,42 @@ def evaluate_research_contract(
             for key, expected in required_checks.items():
                 if observed_checks.get(key) != expected:
                     witness_mismatches.append(f"checks.{key}")
+
+        witness_observed = witness.get("observed")
+        if not isinstance(witness_observed, dict):
+            witness_mismatches.append("observed")
+        elif isinstance(observed_checks, dict):
+            for key, expected in required_checks.items():
+                if key in witness_observed:
+                    observed_value = witness_observed.get(key)
+                    if isinstance(expected, (int, float)) and not isinstance(expected, bool):
+                        if not (
+                            isinstance(observed_value, (int, float))
+                            and not isinstance(observed_value, bool)
+                            and math.isfinite(float(observed_value))
+                        ):
+                            witness_mismatches.append(f"observed.{key}")
+                            continue
+                    if observed_value != observed_checks.get(key):
+                        witness_mismatches.append(f"observed.{key}")
+
+            sub_rho = witness_observed.get("subcritical_spectral_radius")
+            if _finite_nonnegative_number(sub_rho):
+                if observed_checks.get("subcritical_below_one") is not (
+                    float(sub_rho) < 1.0
+                ):
+                    witness_mismatches.append("observed.subcritical_below_one")
+            elif "subcritical_below_one" in required_checks:
+                witness_mismatches.append("observed.subcritical_spectral_radius")
+
+            super_rho = witness_observed.get("supercritical_spectral_radius")
+            if _finite_nonnegative_number(super_rho):
+                if observed_checks.get("supercritical_above_one") is not (
+                    float(super_rho) > 1.0
+                ):
+                    witness_mismatches.append("observed.supercritical_above_one")
+            elif "supercritical_above_one" in required_checks:
+                witness_mismatches.append("observed.supercritical_spectral_radius")
 
         if witness_mismatches:
             return _status(
