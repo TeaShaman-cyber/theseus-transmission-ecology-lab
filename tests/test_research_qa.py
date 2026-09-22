@@ -399,6 +399,18 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
         self.assertIn("virus.metrics.dominant_variant_share", out["mismatched"])
 
+    def test_survivor_floor_uses_receipt_scale_rounding_not_fixed_slack(self):
+        runs = valid_runs()
+        runs["virus"]["metrics"]["total_mass_by_step"] = [1.0] * 9
+        runs["virus"]["metrics"]["time_to_extinction_or_horizon"] = 8
+        runs["virus"]["metrics"]["surviving_variant_count"] = 1
+        runs["virus"]["metrics"]["dominant_variant_share"] = 0.9999999999
+        runs["virus"]["metrics"]["variant_shannon_entropy"] = 2.40258528351e-09
+        out = evaluate(runs=runs)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
+        self.assertIn("virus.metrics.dominant_variant_share", out["mismatched"])
+
     def test_run_receipt_wrong_authority_fails_closed(self):
         runs = valid_runs()
         runs["virus"]["scientific_authority"] = "ACCEPT"

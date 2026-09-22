@@ -181,24 +181,30 @@ def _validate_metric_values(
                     nonsurvivor_budget = (
                         expected_variant_count - surviving
                     ) * SURVIVAL_TOLERANCE
-                    survivor_mass_floor = max(
-                        0.0, final_mass - nonsurvivor_budget
+                    share_rounding = _significant_rounding_half_step(
+                        pmax,
+                        expected_float_digits,
+                        bounded_unit_interval_lower=True,
                     )
-                    survivor_share_floor = (
-                        survivor_mass_floor / (surviving * final_mass)
+                    mass_rounding = _significant_rounding_half_step(
+                        final_mass, expected_float_digits
                     )
-                    if pmax + compare_tol < survivor_share_floor:
-                        mismatches.append("dominant_variant_share")
+                    pmax_upper = min(1.0, pmax + share_rounding)
+                    mass_lower = max(0.0, final_mass - mass_rounding)
+                    if mass_lower > 0.0:
+                        survivor_mass_floor = max(
+                            0.0, mass_lower - nonsurvivor_budget
+                        )
+                        survivor_share_floor = (
+                            survivor_mass_floor / (surviving * mass_lower)
+                        )
+                        if (
+                            math.nextafter(pmax_upper, math.inf)
+                            < survivor_share_floor
+                        ):
+                            mismatches.append("dominant_variant_share")
 
                     if surviving > 1:
-                        share_rounding = _significant_rounding_half_step(
-                            pmax,
-                            expected_float_digits,
-                            bounded_unit_interval_lower=True,
-                        )
-                        mass_rounding = _significant_rounding_half_step(
-                            final_mass, expected_float_digits
-                        )
                         pmax_lower = max(0.0, pmax - share_rounding)
                         mass_upper = final_mass + mass_rounding
                         max_non_dominant_mass = (1.0 - pmax_lower) * mass_upper
