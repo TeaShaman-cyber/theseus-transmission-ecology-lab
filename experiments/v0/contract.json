@@ -32,6 +32,7 @@
       "graph_sha256": "97b57eb5e2070a31370793e126f73585232c2d2211f8ea9823cfd29879d26e49"
     },
     "kind": "spectral_or_hodge",
+    "recipe_path": "experiments/v0/witness/wolfram-v0.wl",
     "required": true,
     "required_checks": {
       "cycle_rank_beta1": 2,

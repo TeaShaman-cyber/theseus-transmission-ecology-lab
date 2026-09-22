@@ -339,7 +339,12 @@ def evaluate_research_contract(
         return _status("FAIL", "invalid_evidence_binding_contract")
     expected_runs = evidence_bindings.get("runs")
     expected_control = evidence_bindings.get("control")
-    if not isinstance(expected_runs, dict) or not isinstance(expected_control, dict):
+    expected_witness = evidence_bindings.get("witness")
+    if (
+        not isinstance(expected_runs, dict)
+        or not isinstance(expected_control, dict)
+        or not isinstance(expected_witness, dict)
+    ):
         return _status("FAIL", "invalid_evidence_binding_contract")
 
     declared_metrics = contract.get("declared_metrics")
@@ -362,7 +367,16 @@ def evaluate_research_contract(
     ):
         return _status("FAIL", "invalid_independent_witness_contract")
     expected_backend = witness_contract.get("expected_backend")
-    if not isinstance(expected_backend, str) or not expected_backend:
+    recipe_path = witness_contract.get("recipe_path")
+    if (
+        not isinstance(expected_backend, str)
+        or not expected_backend
+        or not isinstance(recipe_path, str)
+        or not recipe_path
+        or expected_witness.get("recipe_path") != recipe_path
+        or not isinstance(expected_witness.get("recipe_sha256"), str)
+        or not expected_witness.get("recipe_sha256")
+    ):
         return _status("FAIL", "invalid_independent_witness_contract")
 
     expected_horizon = expected_control.get("horizon")
@@ -689,6 +703,8 @@ def evaluate_research_contract(
             witness_mismatches.append("scientific_authority")
         if witness.get("backend") != expected_backend:
             witness_mismatches.append("backend")
+        if witness.get("recipe_sha256") != expected_witness.get("recipe_sha256"):
+            witness_mismatches.append("recipe_sha256")
         if witness.get("kind") != witness_contract.get("kind"):
             witness_mismatches.append("kind")
 
@@ -828,6 +844,9 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
     contract_sha256 = _git_blob_sha256(
         root, source_commit, "experiments/v0/contract.json"
     )
+    contract_data = _git_blob_json(
+        root, source_commit, "experiments/v0/contract.json"
+    )
     graph_sha256 = _git_blob_sha256(
         root, source_commit, "experiments/v0/shared-graph.json"
     )
@@ -837,7 +856,25 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
     controls_data = _git_blob_json(
         root, source_commit, "experiments/v0/controls.json"
     )
-    if None in (contract_sha256, graph_sha256, controls_sha256) or controls_data is None:
+    if (
+        None in (contract_sha256, graph_sha256, controls_sha256)
+        or contract_data is None
+        or controls_data is None
+    ):
+        return None
+
+    witness_contract = contract_data.get("independent_witness")
+    if not isinstance(witness_contract, dict):
+        return None
+    recipe_path = witness_contract.get("recipe_path")
+    if (
+        not isinstance(recipe_path, str)
+        or not recipe_path.startswith("experiments/v0/")
+        or ".." in Path(recipe_path).parts
+    ):
+        return None
+    recipe_sha256 = _git_blob_sha256(root, source_commit, recipe_path)
+    if recipe_sha256 is None:
         return None
 
     runs = {}
@@ -861,6 +898,10 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
 
     return {
         "runs": runs,
+        "witness": {
+            "recipe_path": recipe_path,
+            "recipe_sha256": recipe_sha256,
+        },
         "control": {
             "graph_sha256": graph_sha256,
             "parameters_sha256": controls_sha256,

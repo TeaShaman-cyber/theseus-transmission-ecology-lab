@@ -38,6 +38,7 @@ BASE_CONTRACT = {
         "required": True,
         "kind": "spectral_or_hodge",
         "expected_backend": "WolframLanguageEvaluator",
+        "recipe_path": "experiments/v0/witness/wolfram-v0.wl",
         "expected_inputs": {
             "graph_sha256": "graph-ok",
             "controls_sha256": "controls-ok",
@@ -78,6 +79,10 @@ BASE_BINDINGS = {
             "parameters_sha256": "agent-params-ok",
             "variant_count": 2,
         },
+    },
+    "witness": {
+        "recipe_path": "experiments/v0/witness/wolfram-v0.wl",
+        "recipe_sha256": "recipe-ok",
     },
     "control": {
         "graph_sha256": "graph-ok",
@@ -181,6 +186,7 @@ def valid_witness(commit: str = COMMIT_A):
         "authority": "NONE",
         "scientific_authority": "NONE",
         "backend": "WolframLanguageEvaluator",
+        "recipe_sha256": "recipe-ok",
         "kind": "spectral_or_hodge",
         "inputs": {
             "graph_sha256": "graph-ok",
@@ -550,6 +556,14 @@ class ResearchQATests(unittest.TestCase):
                 self.assertEqual(out["contract_status"], "FAIL", out)
                 self.assertEqual(out["reason"], "witness_content_mismatch", out)
                 self.assertIn("backend", out["mismatched"], out)
+
+    def test_witness_recipe_digest_must_bind_source_recipe(self):
+        witness = valid_witness()
+        witness["recipe_sha256"] = "wrong-recipe"
+        out = evaluate(witness=witness)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "witness_content_mismatch")
+        self.assertIn("recipe_sha256", out["mismatched"])
 
     def test_witness_and_contract_cannot_collude_on_stale_source_hashes(self):
         contract = json.loads(json.dumps(BASE_CONTRACT))
