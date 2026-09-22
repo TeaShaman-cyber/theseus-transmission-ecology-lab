@@ -117,3 +117,12 @@ and contract were updated, the exact committed Wolfram graph/Hodge/spectral reci
 through MarcoPolo/mcporter and bound to execution commit
 `c5e84131f257a166109ef75667c627c5e661287c`. The graph and spectral targets are unchanged;
 all required mathematical checks reproduced.
+
+Ninth reverification note: exact-head review showed that hashing a Wolfram recipe did not prove
+which graph/control values the remote execution actually consumed. Deterministic v0 now uses a
+versioned source-consuming adapter (`experiments/v0/witness/wolfram_v0_adapter.py`) that reads the
+exact source-commit graph and controls, renders those values into the versioned Wolfram recipe,
+and binds both adapter and recipe digests into witness schema v2. The adapter was executed from a
+detached checkout of execution commit `f9db32e0c6e1d5ab83f627e5e946fc93d0b04938` through the
+established MarcoPolo/mcporter `WolframLanguageEvaluator` route. The resulting witness was
+`VERIFIED`; all required graph/Hodge/spectral checks reproduced with authority `NONE`.
