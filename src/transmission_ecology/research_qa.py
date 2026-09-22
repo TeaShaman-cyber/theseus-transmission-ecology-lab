@@ -60,6 +60,18 @@ def _nonnegative_int(value) -> bool:
     return not isinstance(value, bool) and isinstance(value, int) and value >= 0
 
 
+def _significant_rounding_half_step(
+    value: float, digits: int, *, bounded_unit_interval_lower: bool = False
+) -> float:
+    if value <= 0.0:
+        return 0.0
+    if bounded_unit_interval_lower and value == 1.0:
+        exponent = -1
+    else:
+        exponent = math.floor(math.log10(abs(value)))
+    return 0.5 * (10.0 ** (exponent - digits + 1))
+
+
 def _validate_metric_values(
     metrics: dict,
     declared_metrics: list[str],
@@ -68,6 +80,7 @@ def _validate_metric_values(
     expected_variant_count: int,
     expected_horizon: int,
     expected_initial_mass: float,
+    expected_float_digits: int,
 ) -> list[str]:
     mismatches: list[str] = []
 
@@ -183,6 +196,24 @@ def _validate_metric_values(
                     )
                     if pmax + compare_tol < survivor_share_floor:
                         mismatches.append("dominant_variant_share")
+
+                    if surviving > 1:
+                        share_rounding = _significant_rounding_half_step(
+                            pmax,
+                            expected_float_digits,
+                            bounded_unit_interval_lower=True,
+                        )
+                        mass_rounding = _significant_rounding_half_step(
+                            final_mass, expected_float_digits
+                        )
+                        pmax_lower = max(0.0, pmax - share_rounding)
+                        mass_upper = final_mass + mass_rounding
+                        max_non_dominant_mass = (1.0 - pmax_lower) * mass_upper
+                        required_non_dominant_mass = (
+                            surviving - 1
+                        ) * SURVIVAL_TOLERANCE
+                        if max_non_dominant_mass <= required_non_dominant_mass:
+                            mismatches.append("dominant_variant_share")
 
                 if pmax <= 0.0:
                     mismatches.append("dominant_variant_share")
@@ -363,6 +394,7 @@ def evaluate_research_contract(
                 expected_variant_count=expected_variant_count,
                 expected_horizon=expected_horizon,
                 expected_initial_mass=float(expected_initial_mass),
+                expected_float_digits=expected_digits,
             ):
                 run_mismatches.append(f"{name}.metrics.{metric}")
 
