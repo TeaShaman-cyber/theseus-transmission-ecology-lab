@@ -79,6 +79,25 @@ class RunnerTests(unittest.TestCase):
                         main(["run-v0", "--write-reference"])
                     writer.assert_not_called()
 
+    def test_run_v0_rejects_dirty_package_initializer_before_write(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package = root / "src" / "transmission_ecology"
+            package.mkdir(parents=True)
+            (package / "__init__.py").write_text("VALUE = 1\n")
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "qa@example.invalid"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "QA"], cwd=root, check=True)
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "baseline"], cwd=root, check=True)
+            (package / "__init__.py").write_text("VALUE = 2\n")
+
+            with patch("transmission_ecology.cli.Path.cwd", return_value=root):
+                with patch("transmission_ecology.cli.write_reference_set", return_value={}) as writer:
+                    with self.assertRaises(SystemExit):
+                        main(["run-v0", "--write-reference"])
+                    writer.assert_not_called()
+
     def test_reference_set_is_byte_deterministic_for_same_source_commit(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)
