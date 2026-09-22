@@ -62,6 +62,18 @@ class WitnessAdapterTests(unittest.TestCase):
         self.assertIn('subTarget = 0.8', first)
         self.assertIn('subTarget = 0.6', second)
 
+    def test_render_rejects_duplicate_source_keys(self):
+        temp, root = self._fixture_root()
+        with temp:
+            controls = root / "experiments" / "v0" / "controls.json"
+            controls.write_text(
+                '{"schema_version":1,"variant_count":2,"variant_count":3,'
+                '"subcritical_target_radius":0.8,"supercritical_target_radius":1.2}',
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                MODULE.render_wolfram_code(root)
+
     def test_render_rejects_nonstandard_json_constants(self):
         temp, root = self._fixture_root()
         with temp:
