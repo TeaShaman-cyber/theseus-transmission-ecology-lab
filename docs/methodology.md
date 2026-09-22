@@ -126,3 +126,11 @@ and binds both adapter and recipe digests into witness schema v2. The adapter wa
 detached checkout of execution commit `f9db32e0c6e1d5ab83f627e5e946fc93d0b04938` through the
 established MarcoPolo/mcporter `WolframLanguageEvaluator` route. The resulting witness was
 `VERIFIED`; all required graph/Hodge/spectral checks reproduced with authority `NONE`.
+
+Tenth reverification note: exact-head review found that `perturbation_recovery_ratio` was only
+range-checked and that callers could request a run horizon inconsistent with the preregistered
+controls. Research QA now independently replays the midpoint perturbation from exact source graph,
+parameter, seed, and horizon data using a separate pure-Python verifier, while reference generation
+refuses a horizon that differs from source controls. The source-consuming Wolfram witness was rerun
+from execution commit `8cd29797bc5b657343f2e50ab0e942de0a6428ce`; all required mathematical
+checks reproduced with authority `NONE`.
