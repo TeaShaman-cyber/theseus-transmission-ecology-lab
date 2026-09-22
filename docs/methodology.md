@@ -109,3 +109,11 @@ execution-surface provenance were added, the execution source changed while the 
 controls, and versioned Wolfram recipe remained unchanged. The exact committed recipe was rerun
 through the MarcoPolo mcporter Wolfram route and bound to execution commit
 `18fbc55f8c361e91aa8e895f86efe03e6be93c5d`. All required mathematical checks reproduced.
+
+Eighth reverification note: metamorphic QA exposed representation-dependent initial seeding.
+Deterministic v0 now preregisters the seed node and one named seed variant per substrate, and
+run-receipt schema v3 records those semantic identities with the initial mass. After the controls
+and contract were updated, the exact committed Wolfram graph/Hodge/spectral recipe was rerun
+through MarcoPolo/mcporter and bound to execution commit
+`c5e84131f257a166109ef75667c627c5e661287c`. The graph and spectral targets are unchanged;
+all required mathematical checks reproduced.
