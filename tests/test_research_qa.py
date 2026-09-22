@@ -3,6 +3,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from transmission_ecology.research_qa import (
     _source_currentness,
@@ -51,6 +52,9 @@ BASE_CONTRACT = {
     "receipt_contract": {
         "schema_version": 2,
         "float_significant_digits": 12,
+    },
+    "metric_semantics": {
+        "survival_tolerance": 1e-12,
     },
 }
 
@@ -402,6 +406,13 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["contract_status"], "FAIL")
         self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
         self.assertIn("virus.scientific_authority", out["mismatched"])
+
+    def test_metric_semantics_tolerance_must_match_canonical_definition(self):
+        with patch("transmission_ecology.research_qa.SURVIVAL_TOLERANCE", 1e-6):
+            out = evaluate()
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "metric_semantics_mismatch")
+        self.assertIn("survival_tolerance", out["mismatched"])
 
     def test_missing_control_receipt_is_unknown(self):
         out = evaluate_research_contract(

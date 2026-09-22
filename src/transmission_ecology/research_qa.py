@@ -10,19 +10,12 @@ import tempfile
 from pathlib import Path
 
 from transmission_ecology.metrics import SURVIVAL_TOLERANCE
+from transmission_ecology.provenance import (
+    EXPERIMENT_SURFACE_PATHS,
+    working_tree_paths_dirty,
+)
 
 REQUIRED_RUNS = ("virus", "meme", "agent")
-EXPERIMENT_SURFACE_PATHS = (
-    "pyproject.toml",
-    "src/transmission_ecology/graph.py",
-    "src/transmission_ecology/state.py",
-    "src/transmission_ecology/metrics.py",
-    "src/transmission_ecology/cli.py",
-    "src/transmission_ecology/receipt.py",
-    "src/transmission_ecology/models",
-    "experiments/v0",
-    "tools/run-v0",
-)
 RESEARCH_EVIDENCE_PATHS = (
     "receipts/reference",
     "receipts/independent/wolfram-v0.json",
@@ -279,6 +272,7 @@ def evaluate_research_contract(
         "limitations",
         "independent_witness",
         "receipt_contract",
+        "metric_semantics",
     )
     missing = [key for key in required if not contract.get(key)]
     if missing:
@@ -290,6 +284,25 @@ def evaluate_research_contract(
 
     if any(r.get("source_commit") != source_commit for r in run_receipts.values()):
         return _status("FAIL", "source_commit_mismatch")
+
+    metric_semantics = contract.get("metric_semantics")
+    if not isinstance(metric_semantics, dict):
+        return _status(
+            "FAIL",
+            "metric_semantics_mismatch",
+            mismatched=["metric_semantics"],
+        )
+    declared_survival_tolerance = metric_semantics.get("survival_tolerance")
+    if (
+        not _finite_nonnegative_number(declared_survival_tolerance)
+        or float(declared_survival_tolerance) <= 0.0
+        or float(declared_survival_tolerance) != SURVIVAL_TOLERANCE
+    ):
+        return _status(
+            "FAIL",
+            "metric_semantics_mismatch",
+            mismatched=["survival_tolerance"],
+        )
 
     receipt_contract = contract.get("receipt_contract", {})
     expected_schema = receipt_contract.get("schema_version")
@@ -854,36 +867,22 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
     }
 
 
-def _dirty_paths(root: Path, paths: tuple[str, ...]) -> tuple[bool | None, str]:
-    status = subprocess.run(
-        ["git", "status", "--porcelain", "--untracked-files=all", "--", *paths],
-        cwd=root,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        text=True,
-        check=False,
-    )
-    if status.returncode != 0:
-        return None, ""
-    return bool(status.stdout.strip()), status.stdout
-
-
 def _source_currentness(
     root: Path, source_commit: str, head: str
 ) -> tuple[str, str | None]:
-    experiment_dirty, _ = _dirty_paths(root, EXPERIMENT_SURFACE_PATHS)
+    experiment_dirty, _ = working_tree_paths_dirty(root, EXPERIMENT_SURFACE_PATHS)
     if experiment_dirty is None:
         return "UNKNOWN", "working_tree_status_unavailable"
     if experiment_dirty:
         return "STALE", "working_tree_experiment_surface_dirty"
 
-    evidence_dirty, _ = _dirty_paths(root, RESEARCH_EVIDENCE_PATHS)
+    evidence_dirty, _ = working_tree_paths_dirty(root, RESEARCH_EVIDENCE_PATHS)
     if evidence_dirty is None:
         return "UNKNOWN", "working_tree_status_unavailable"
     if evidence_dirty:
         return "STALE", "working_tree_research_input_dirty"
 
-    qa_dirty, _ = _dirty_paths(root, RESEARCH_QA_SURFACE_PATHS)
+    qa_dirty, _ = working_tree_paths_dirty(root, RESEARCH_QA_SURFACE_PATHS)
     if qa_dirty is None:
         return "UNKNOWN", "working_tree_status_unavailable"
     if qa_dirty:

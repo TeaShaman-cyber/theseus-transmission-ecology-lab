@@ -9,6 +9,10 @@ import numpy as np
 
 from transmission_ecology.graph import adjacency_matrix, cycle_rank_beta1, load_graph
 from transmission_ecology.metrics import spectral_radius, summarize_run
+from transmission_ecology.provenance import (
+    EXPERIMENT_SURFACE_PATHS,
+    working_tree_paths_dirty,
+)
 from transmission_ecology.models import agent, meme, virus
 from transmission_ecology.models.base import kron_operator, validate_variants
 from transmission_ecology.receipt import (
@@ -238,6 +242,17 @@ def main(argv=None) -> int:
                 "run-v0 requires --write-reference before overwriting reference receipts"
             )
         root = Path.cwd().resolve()
+        execution_dirty, _ = working_tree_paths_dirty(
+            root, EXPERIMENT_SURFACE_PATHS
+        )
+        if execution_dirty is None:
+            parser.error(
+                "run-v0 could not verify execution surface cleanliness"
+            )
+        if execution_dirty:
+            parser.error(
+                "run-v0 refuses to write reference receipts from a dirty execution surface"
+            )
         source_commit = _git_head(root)
         out = root / "receipts" / "reference"
         receipts = write_reference_set(root, out, horizon=args.horizon, source_commit=source_commit)

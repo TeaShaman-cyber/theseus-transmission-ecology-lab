@@ -56,6 +56,9 @@
     "no endogenous graph rewiring",
     "no real-world causal inference"
   ],
+  "metric_semantics": {
+    "survival_tolerance": 1e-12
+  },
   "question": "Which declared transmission-dynamics invariants remain useful when the substrate changes from virus to meme to AI-agent systems?",
   "receipt_contract": {
     "float_significant_digits": 12,
