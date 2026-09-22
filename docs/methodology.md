@@ -77,3 +77,9 @@ parameter and diversity metrics gained cross-metric consistency checks, the cont
 without changing the graph or spectral targets. The Wolfram graph/Hodge/spectral calculation was
 rerun through the MarcoPolo mcporter Wolfram route and bound to execution commit
 `f86cf7745b66c43003df96cf5f2a6d3bbf0b66e2`. All required mathematical checks reproduced.
+
+Fifth reverification note: after research QA adopted survivor-aware dominant-share bounds,
+a shared survival/extinction tolerance, and joint Shannon entropy/share feasibility checks,
+the execution source changed without changing the frozen graph or control targets. The Wolfram
+graph/Hodge/spectral calculation was rerun through the MarcoPolo mcporter Wolfram route and
+bound to execution commit `38511ae57542db0df48ace40f1eed5f47b87e61b`. All required mathematical checks reproduced.
