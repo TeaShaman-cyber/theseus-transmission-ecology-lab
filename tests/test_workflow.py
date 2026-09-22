@@ -12,6 +12,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue(path.is_file())
         text = path.read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", text)
+        self.assertIn("pull_request:", text)
+        self.assertIn("paths:", text)
         self.assertIn("fetch-depth: 0", text)
         self.assertIn("source_commit", text)
         self.assertIn("git worktree add --detach", text)
