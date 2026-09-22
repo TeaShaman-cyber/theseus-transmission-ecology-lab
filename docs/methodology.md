@@ -71,3 +71,9 @@ preregistered `WolframLanguageEvaluator`. The graph/Hodge/spectral calculation w
 the MarcoPolo mcporter Wolfram route and bound to execution commit
 `9aea5dfb5642cc2fcebac1f4eba6f6dd7d72b4ad`. The graph and controls hashes were unchanged and
 the required mathematical checks reproduced.
+
+Fourth reverification note: after the run initial mass became an explicit source-bound control
+parameter and diversity metrics gained cross-metric consistency checks, the controls blob changed
+without changing the graph or spectral targets. The Wolfram graph/Hodge/spectral calculation was
+rerun through the MarcoPolo mcporter Wolfram route and bound to execution commit
+`f86cf7745b66c43003df96cf5f2a6d3bbf0b66e2`. All required mathematical checks reproduced.
