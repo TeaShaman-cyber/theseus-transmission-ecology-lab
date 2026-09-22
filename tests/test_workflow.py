@@ -7,6 +7,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_canonical_qa_fetches_full_history_for_provenance_checks(self):
+        path = ROOT / ".github" / "workflows" / "qa.yml"
+        self.assertTrue(path.is_file())
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("actions/checkout@v4", text)
+        self.assertIn("fetch-depth: 0", text)
+
     def test_v0_replay_uses_exact_execution_commit_and_research_receipt(self):
         path = ROOT / ".github" / "workflows" / "v0-replay.yml"
         self.assertTrue(path.is_file())
