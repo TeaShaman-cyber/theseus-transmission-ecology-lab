@@ -98,6 +98,133 @@ class RunnerTests(unittest.TestCase):
                         main(["run-v0", "--write-reference"])
                     writer.assert_not_called()
 
+    def test_labeled_graph_node_order_does_not_change_scientific_metrics(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = Path(tmp)
+            graph_payload = json.loads(
+                (ROOT / "experiments" / "v0" / "shared-graph.json").read_text()
+            )
+            controls_payload = json.loads(
+                (ROOT / "experiments" / "v0" / "controls.json").read_text()
+            )
+            controls_payload["run_seed_node"] = "n1"
+
+            receipts = []
+            for label, nodes in (
+                ("a", list(graph_payload["nodes"])),
+                ("b", ["n4", "n2", "n3", "n1"]),
+            ):
+                root = tmp_root / label
+                exp = root / "experiments" / "v0"
+                params_dir = exp / "parameters"
+                params_dir.mkdir(parents=True)
+                graph = dict(graph_payload)
+                graph["nodes"] = nodes
+                (exp / "shared-graph.json").write_text(json.dumps(graph))
+                (exp / "controls.json").write_text(json.dumps(controls_payload))
+                (exp / "contract.json").write_text(
+                    (ROOT / "experiments" / "v0" / "contract.json").read_text()
+                )
+                witness_dir = exp / "witness"
+                witness_dir.mkdir()
+                (witness_dir / "wolfram-v0.wl").write_text(
+                    (ROOT / "experiments" / "v0" / "witness" / "wolfram-v0.wl").read_text()
+                )
+                for name in ("virus", "meme", "agent"):
+                    (params_dir / f"{name}.json").write_text(
+                        (ROOT / "experiments" / "v0" / "parameters" / f"{name}.json").read_text()
+                    )
+                out = root / "receipts" / "reference"
+                write_reference_set(root, out, horizon=8, source_commit="d" * 40)
+                receipts.append(json.loads((out / "v0-virus.json").read_text()))
+
+            first, second = (item["metrics"] for item in receipts)
+            self.assertEqual(
+                first["subcritical_or_supercritical"],
+                second["subcritical_or_supercritical"],
+            )
+            self.assertEqual(first["cycle_rank_beta1"], second["cycle_rank_beta1"])
+            self.assertEqual(
+                first["surviving_variant_count"], second["surviving_variant_count"]
+            )
+            self.assertEqual(
+                first["time_to_extinction_or_horizon"],
+                second["time_to_extinction_or_horizon"],
+            )
+            for left, right in zip(
+                first["total_mass_by_step"], second["total_mass_by_step"]
+            ):
+                self.assertAlmostEqual(left, right, places=12)
+            for key in (
+                "spectral_radius",
+                "variant_shannon_entropy",
+                "dominant_variant_share",
+                "perturbation_recovery_ratio",
+            ):
+                self.assertAlmostEqual(first[key], second[key], places=12)
+
+    def test_named_variant_order_does_not_change_scientific_metrics(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = Path(tmp)
+            graph_text = (ROOT / "experiments" / "v0" / "shared-graph.json").read_text()
+            contract_text = (ROOT / "experiments" / "v0" / "contract.json").read_text()
+            controls_payload = json.loads(
+                (ROOT / "experiments" / "v0" / "controls.json").read_text()
+            )
+            controls_payload["run_seed_node"] = "n1"
+            controls_payload["run_seed_variants"] = {
+                "virus": "v0",
+                "meme": "m0",
+                "agent": "a0",
+            }
+            base_virus = json.loads(
+                (ROOT / "experiments" / "v0" / "parameters" / "virus.json").read_text()
+            )
+
+            receipts = []
+            for label, mutate in (("a", False), ("b", True)):
+                root = tmp_root / label
+                exp = root / "experiments" / "v0"
+                params_dir = exp / "parameters"
+                params_dir.mkdir(parents=True)
+                (exp / "shared-graph.json").write_text(graph_text)
+                (exp / "controls.json").write_text(json.dumps(controls_payload))
+                (exp / "contract.json").write_text(contract_text)
+                witness_dir = exp / "witness"
+                witness_dir.mkdir()
+                (witness_dir / "wolfram-v0.wl").write_text(
+                    (ROOT / "experiments" / "v0" / "witness" / "wolfram-v0.wl").read_text()
+                )
+                for name in ("meme", "agent"):
+                    (params_dir / f"{name}.json").write_text(
+                        (ROOT / "experiments" / "v0" / "parameters" / f"{name}.json").read_text()
+                    )
+                virus = json.loads(json.dumps(base_virus))
+                if mutate:
+                    virus["variants"] = list(reversed(virus["variants"]))
+                    matrix = virus["variant_transition"]
+                    virus["variant_transition"] = [
+                        [matrix[1][1], matrix[1][0]],
+                        [matrix[0][1], matrix[0][0]],
+                    ]
+                (params_dir / "virus.json").write_text(json.dumps(virus))
+                out = root / "receipts" / "reference"
+                write_reference_set(root, out, horizon=8, source_commit="d" * 40)
+                receipts.append(json.loads((out / "v0-virus.json").read_text()))
+
+            first, second = (item["metrics"] for item in receipts)
+            for key in (
+                "spectral_radius",
+                "variant_shannon_entropy",
+                "dominant_variant_share",
+                "perturbation_recovery_ratio",
+            ):
+                self.assertAlmostEqual(first[key], second[key], places=12)
+            for left, right in zip(
+                first["total_mass_by_step"], second["total_mass_by_step"]
+            ):
+                self.assertAlmostEqual(left, right, places=12)
+
     def test_reference_set_is_byte_deterministic_for_same_source_commit(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)

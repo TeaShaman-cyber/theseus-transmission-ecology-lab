@@ -51,7 +51,7 @@ BASE_CONTRACT = {
         },
     },
     "receipt_contract": {
-        "schema_version": 2,
+        "schema_version": 3,
         "float_significant_digits": 12,
     },
     "metric_semantics": {
@@ -66,18 +66,24 @@ BASE_BINDINGS = {
             "graph_sha256": "graph-ok",
             "parameters_sha256": "virus-params-ok",
             "variant_count": 2,
+            "variants": ["v0", "v1"],
+            "seed_variant": "v0",
         },
         "meme": {
             "contract_sha256": "contract-ok",
             "graph_sha256": "graph-ok",
             "parameters_sha256": "meme-params-ok",
             "variant_count": 2,
+            "variants": ["m0", "m1"],
+            "seed_variant": "m0",
         },
         "agent": {
             "contract_sha256": "contract-ok",
             "graph_sha256": "graph-ok",
             "parameters_sha256": "agent-params-ok",
             "variant_count": 2,
+            "variants": ["a0", "a1"],
+            "seed_variant": "a0",
         },
     },
     "witness": {
@@ -92,6 +98,7 @@ BASE_BINDINGS = {
         "variant_count": 2,
         "horizon": 8,
         "run_initial_mass": 1.0,
+        "run_seed_node": "n1",
     },
 }
 
@@ -101,7 +108,7 @@ def run_receipt(
     commit: str = COMMIT_A,
     *,
     all_passed: bool = True,
-    schema_version: int = 2,
+    schema_version: int = 3,
     digits: int = 12,
 ):
     binding = BASE_BINDINGS["runs"][name]
@@ -116,6 +123,11 @@ def run_receipt(
         "parameters_sha256": binding["parameters_sha256"],
         "scientific_authority": "NONE",
         "horizon": 8,
+        "initial_condition": {
+            "node": "n1",
+            "variant": binding["seed_variant"],
+            "mass": 1.0,
+        },
         "metrics": {
             "spectral_radius": 0.8,
             "cycle_rank_beta1": 2,
@@ -142,7 +154,7 @@ def valid_runs(commit: str = COMMIT_A):
 
 def valid_control_receipt(commit: str = COMMIT_A):
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "numeric_policy": {"float_significant_digits": 12},
         "experiment_id": "deterministic-v0",
         "source_commit": commit,
@@ -277,6 +289,16 @@ class ResearchQATests(unittest.TestCase):
         out = evaluate(runs=runs)
         self.assertEqual(out["contract_status"], "FAIL")
         self.assertEqual(out["reason"], "receipt_contract_mismatch")
+
+    def test_run_receipt_initial_condition_must_match_source_identities(self):
+        for field, value in (("node", "n4"), ("variant", "v1"), ("mass", 2.0)):
+            with self.subTest(field=field):
+                runs = valid_runs()
+                runs["virus"]["initial_condition"][field] = value
+                out = evaluate(runs=runs)
+                self.assertEqual(out["contract_status"], "FAIL", out)
+                self.assertEqual(out["reason"], "run_receipt_binding_mismatch", out)
+                self.assertIn(f"virus.initial_condition.{field}", out["mismatched"], out)
 
     def test_run_receipt_wrong_substrate_identity_fails_closed(self):
         runs = valid_runs()

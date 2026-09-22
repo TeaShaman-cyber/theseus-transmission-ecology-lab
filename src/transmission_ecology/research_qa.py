@@ -401,10 +401,13 @@ def evaluate_research_contract(
 
     expected_horizon = expected_control.get("horizon")
     expected_initial_mass = expected_control.get("run_initial_mass")
+    expected_seed_node = expected_control.get("run_seed_node")
     if (
         not _nonnegative_int(expected_horizon)
         or not _finite_nonnegative_number(expected_initial_mass)
         or float(expected_initial_mass) <= 0.0
+        or not isinstance(expected_seed_node, str)
+        or not expected_seed_node
     ):
         return _status("FAIL", "invalid_evidence_binding_contract")
 
@@ -427,14 +430,42 @@ def evaluate_research_contract(
                 run_mismatches.append(f"{name}.{field}")
 
         expected_variant_count = expected.get("variant_count")
+        expected_variants = expected.get("variants")
+        expected_seed_variant = expected.get("seed_variant")
         if (
             isinstance(expected_variant_count, bool)
             or not isinstance(expected_variant_count, int)
             or expected_variant_count <= 0
+            or not isinstance(expected_variants, list)
+            or len(expected_variants) != expected_variant_count
+            or any(not isinstance(item, str) or not item for item in expected_variants)
+            or len(set(expected_variants)) != len(expected_variants)
+            or not isinstance(expected_seed_variant, str)
+            or expected_seed_variant not in expected_variants
         ):
             return _status("FAIL", "invalid_evidence_binding_contract")
         if receipt.get("horizon") != expected_horizon:
             run_mismatches.append(f"{name}.horizon")
+
+        initial_condition = receipt.get("initial_condition")
+        if not isinstance(initial_condition, dict):
+            run_mismatches.append(f"{name}.initial_condition")
+        else:
+            if initial_condition.get("node") != expected_seed_node:
+                run_mismatches.append(f"{name}.initial_condition.node")
+            if initial_condition.get("variant") != expected_seed_variant:
+                run_mismatches.append(f"{name}.initial_condition.variant")
+            observed_initial_mass = initial_condition.get("mass")
+            if (
+                not _finite_nonnegative_number(observed_initial_mass)
+                or not math.isclose(
+                    float(observed_initial_mass),
+                    float(expected_initial_mass),
+                    rel_tol=1e-12,
+                    abs_tol=1e-12,
+                )
+            ):
+                run_mismatches.append(f"{name}.initial_condition.mass")
 
         metrics = receipt.get("metrics")
         if not isinstance(metrics, dict):
@@ -855,7 +886,7 @@ def _git_blob_json(root: Path, commit: str, relpath: str) -> dict | None:
         return None
     try:
         value = loads_strict(result.stdout.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError):
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
         return None
     return value if isinstance(value, dict) else None
 
@@ -870,6 +901,9 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
     graph_sha256 = _git_blob_sha256(
         root, source_commit, "experiments/v0/shared-graph.json"
     )
+    graph_data = _git_blob_json(
+        root, source_commit, "experiments/v0/shared-graph.json"
+    )
     controls_sha256 = _git_blob_sha256(
         root, source_commit, "experiments/v0/controls.json"
     )
@@ -879,7 +913,23 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
     if (
         None in (contract_sha256, graph_sha256, controls_sha256)
         or contract_data is None
+        or graph_data is None
         or controls_data is None
+    ):
+        return None
+
+    graph_nodes = graph_data.get("nodes")
+    seed_node = controls_data.get("run_seed_node")
+    seed_variants = controls_data.get("run_seed_variants")
+    if (
+        not isinstance(graph_nodes, list)
+        or not graph_nodes
+        or any(not isinstance(node, str) or not node for node in graph_nodes)
+        or len(set(graph_nodes)) != len(graph_nodes)
+        or not isinstance(seed_node, str)
+        or seed_node not in graph_nodes
+        or not isinstance(seed_variants, dict)
+        or set(seed_variants) != set(REQUIRED_RUNS)
     ):
         return None
 
@@ -907,13 +957,24 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
         )
         parameters_data = _git_blob_json(root, source_commit, parameters_path)
         variants = None if parameters_data is None else parameters_data.get("variants")
-        if parameters_sha256 is None or not isinstance(variants, list) or not variants:
+        seed_variant = seed_variants.get(name)
+        if (
+            parameters_sha256 is None
+            or not isinstance(variants, list)
+            or not variants
+            or any(not isinstance(item, str) or not item for item in variants)
+            or len(set(variants)) != len(variants)
+            or not isinstance(seed_variant, str)
+            or seed_variant not in variants
+        ):
             return None
         runs[name] = {
             "contract_sha256": contract_sha256,
             "graph_sha256": graph_sha256,
             "parameters_sha256": parameters_sha256,
             "variant_count": len(variants),
+            "variants": variants,
+            "seed_variant": seed_variant,
         }
 
     return {
@@ -930,6 +991,7 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
             "variant_count": controls_data.get("variant_count"),
             "horizon": controls_data.get("horizon"),
             "run_initial_mass": controls_data.get("run_initial_mass"),
+            "run_seed_node": seed_node,
         },
     }
 

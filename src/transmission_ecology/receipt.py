@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 
 
-RECEIPT_SCHEMA_VERSION = 2
+RECEIPT_SCHEMA_VERSION = 3
 FLOAT_SIGNIFICANT_DIGITS = 12
 
 
@@ -85,6 +85,7 @@ def build_run_receipt(
     parameters_path: Path,
     metrics: dict,
     controls: dict,
+    initial_condition: dict,
 ) -> dict:
     return {
         "schema_version": RECEIPT_SCHEMA_VERSION,
@@ -98,6 +99,7 @@ def build_run_receipt(
         "horizon": int(horizon),
         "metrics": metrics,
         "controls": controls,
+        "initial_condition": initial_condition,
         "runtime": {"python": platform.python_version(), "numpy": np.__version__},
         "scientific_authority": "NONE",
     }

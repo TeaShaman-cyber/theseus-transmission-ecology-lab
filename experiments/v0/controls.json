@@ -1,6 +1,12 @@
 {
   "horizon": 8,
   "run_initial_mass": 1.0,
+  "run_seed_node": "n1",
+  "run_seed_variants": {
+    "agent": "a0",
+    "meme": "m0",
+    "virus": "v0"
+  },
   "schema_version": 1,
   "subcritical_target_radius": 0.8,
   "supercritical_target_radius": 1.2,

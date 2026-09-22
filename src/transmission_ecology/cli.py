@@ -46,12 +46,30 @@ def _root_from_graph_path(graph_path: Path) -> Path:
 
 
 def _initial_state(
-    node_count: int, variant_count: int, *, initial_mass: float = 1.0
+    node_count: int,
+    variant_count: int,
+    *,
+    initial_mass: float = 1.0,
+    seed_node_index: int = 0,
+    seed_variant_index: int = 0,
 ) -> np.ndarray:
     if not np.isfinite(initial_mass) or initial_mass <= 0:
         raise ValueError("initial_mass must be finite and positive")
+    if (
+        isinstance(seed_node_index, bool)
+        or not isinstance(seed_node_index, int)
+        or not 0 <= seed_node_index < node_count
+    ):
+        raise ValueError("seed_node_index out of range")
+    if (
+        isinstance(seed_variant_index, bool)
+        or not isinstance(seed_variant_index, int)
+        or not 0 <= seed_variant_index < variant_count
+    ):
+        raise ValueError("seed_variant_index out of range")
     state = np.zeros(node_count * variant_count, dtype=float)
-    state[0] = float(initial_mass)
+    offset = seed_node_index * variant_count + seed_variant_index
+    state[offset] = float(initial_mass)
     return state
 
 
@@ -73,6 +91,8 @@ def run_substrate(
     source_commit: str,
     *,
     initial_mass: float = 1.0,
+    seed_node: str | None = None,
+    seed_variant: str | None = None,
 ) -> dict:
     if name not in ADAPTERS:
         raise ValueError(f"unknown substrate: {name}")
@@ -82,9 +102,23 @@ def run_substrate(
     graph = load_graph(graph_path)
     params = _load_json(params_path)
     variants = validate_variants(params)
+    if seed_node is None:
+        seed_node = graph.nodes[0]
+    if seed_variant is None:
+        seed_variant = variants[0]
+    if not isinstance(seed_node, str) or seed_node not in graph.nodes:
+        raise ValueError("seed_node must name a graph node")
+    if not isinstance(seed_variant, str) or seed_variant not in variants:
+        raise ValueError("seed_variant must name a substrate variant")
+    seed_node_index = graph.nodes.index(seed_node)
+    seed_variant_index = variants.index(seed_variant)
     K = ADAPTERS[name].build_operator(graph, params)
     x0 = _initial_state(
-        len(graph.nodes), len(variants), initial_mass=initial_mass
+        len(graph.nodes),
+        len(variants),
+        initial_mass=initial_mass,
+        seed_node_index=seed_node_index,
+        seed_variant_index=seed_variant_index,
     )
     states = simulate(K, x0, horizon)
     perturbed_final = _perturbed_final(
@@ -108,6 +142,11 @@ def run_substrate(
         parameters_path=params_path,
         metrics=metrics,
         controls={"all_passed": False, "status": "NOT_EVALUATED"},
+        initial_condition={
+            "node": seed_node,
+            "variant": seed_variant,
+            "mass": float(initial_mass),
+        },
     )
 
 
@@ -208,6 +247,24 @@ def write_reference_set(root: Path | str, out: Path | str, *, horizon: int, sour
     controls_path = root / "experiments" / "v0" / "controls.json"
     graph = load_graph(graph_path)
     controls = _load_json(controls_path)
+    seed_node = controls.get("run_seed_node")
+    seed_variants = controls.get("run_seed_variants")
+    initial_mass = controls.get("run_initial_mass")
+    if not isinstance(seed_node, str) or not seed_node:
+        raise ValueError("run_seed_node must be a non-empty string")
+    if (
+        not isinstance(seed_variants, dict)
+        or set(seed_variants) != {"virus", "meme", "agent"}
+        or any(not isinstance(value, str) or not value for value in seed_variants.values())
+    ):
+        raise ValueError("run_seed_variants must name one variant per substrate")
+    if (
+        isinstance(initial_mass, bool)
+        or not isinstance(initial_mass, (int, float))
+        or not np.isfinite(float(initial_mass))
+        or float(initial_mass) <= 0.0
+    ):
+        raise ValueError("run_initial_mass must be finite and positive")
     control_receipt = run_controls(graph, graph_path, controls, controls_path, source_commit=source_commit)
     outputs = {}
     for name in ("virus", "meme", "agent"):
@@ -218,7 +275,9 @@ def write_reference_set(root: Path | str, out: Path | str, *, horizon: int, sour
             params_path,
             horizon,
             source_commit,
-            initial_mass=float(controls["run_initial_mass"]),
+            initial_mass=float(initial_mass),
+            seed_node=seed_node,
+            seed_variant=seed_variants[name],
         )
         receipt["controls"] = {
             "all_passed": control_receipt["all_passed"],

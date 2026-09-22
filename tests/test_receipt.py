@@ -41,11 +41,16 @@ class ReceiptTests(unittest.TestCase):
                 parameters_path=paths["params"],
                 metrics={"spectral_radius": 0.8},
                 controls={"all_passed": True},
+                initial_condition={"node": "n1", "variant": "v0", "mass": 1.0},
             )
-            self.assertEqual(receipt["schema_version"], 2)
+            self.assertEqual(receipt["schema_version"], 3)
             self.assertEqual(receipt["numeric_policy"], {"float_significant_digits": 12})
             self.assertEqual(receipt["source_commit"], "a" * 40)
             self.assertEqual(receipt["scientific_authority"], "NONE")
+            self.assertEqual(
+                receipt["initial_condition"],
+                {"node": "n1", "variant": "v0", "mass": 1.0},
+            )
             self.assertEqual(receipt["contract_sha256"], sha256_file(paths["contract"]))
             self.assertEqual(receipt["graph_sha256"], sha256_file(paths["graph"]))
             self.assertEqual(receipt["parameters_sha256"], sha256_file(paths["params"]))

@@ -63,7 +63,7 @@
   "question": "Which declared transmission-dynamics invariants remain useful when the substrate changes from virus to meme to AI-agent systems?",
   "receipt_contract": {
     "float_significant_digits": 12,
-    "schema_version": 2
+    "schema_version": 3
   },
   "required_controls": [
     "subcritical",
