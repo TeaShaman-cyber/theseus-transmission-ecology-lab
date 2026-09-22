@@ -61,14 +61,14 @@ def _nonnegative_int(value) -> bool:
 def _validate_metric_values(
     metrics: dict,
     declared_metrics: list[str],
-    receipt: dict,
     *,
     expected_cycle_rank_beta1: int | None,
     expected_variant_count: int,
+    expected_horizon: int,
 ) -> list[str]:
     mismatches: list[str] = []
 
-    horizon = receipt.get("horizon")
+    horizon = expected_horizon
     horizon_valid = _nonnegative_int(horizon)
 
     validators = {
@@ -235,6 +235,13 @@ def evaluate_research_contract(
         expected_cycle_rank_beta1
     ):
         return _status("FAIL", "invalid_independent_witness_contract")
+    expected_backend = witness_contract.get("expected_backend")
+    if not isinstance(expected_backend, str) or not expected_backend:
+        return _status("FAIL", "invalid_independent_witness_contract")
+
+    expected_horizon = expected_control.get("horizon")
+    if not _nonnegative_int(expected_horizon):
+        return _status("FAIL", "invalid_evidence_binding_contract")
 
     run_mismatches = []
     for name in REQUIRED_RUNS:
@@ -261,6 +268,8 @@ def evaluate_research_contract(
             or expected_variant_count <= 0
         ):
             return _status("FAIL", "invalid_evidence_binding_contract")
+        if receipt.get("horizon") != expected_horizon:
+            run_mismatches.append(f"{name}.horizon")
 
         metrics = receipt.get("metrics")
         if not isinstance(metrics, dict):
@@ -269,9 +278,9 @@ def evaluate_research_contract(
             for metric in _validate_metric_values(
                 metrics,
                 declared_metrics,
-                receipt,
                 expected_cycle_rank_beta1=expected_cycle_rank_beta1,
                 expected_variant_count=expected_variant_count,
+                expected_horizon=expected_horizon,
             ):
                 run_mismatches.append(f"{name}.metrics.{metric}")
 
@@ -543,6 +552,10 @@ def evaluate_research_contract(
             witness_mismatches.append("experiment_id")
         if witness.get("authority") != "NONE":
             witness_mismatches.append("authority")
+        if witness.get("scientific_authority") != "NONE":
+            witness_mismatches.append("scientific_authority")
+        if witness.get("backend") != expected_backend:
+            witness_mismatches.append("backend")
         if witness.get("kind") != witness_contract.get("kind"):
             witness_mismatches.append("kind")
 

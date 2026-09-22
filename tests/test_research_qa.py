@@ -36,6 +36,7 @@ BASE_CONTRACT = {
     "independent_witness": {
         "required": True,
         "kind": "spectral_or_hodge",
+        "expected_backend": "WolframLanguageEvaluator",
         "expected_inputs": {
             "graph_sha256": "graph-ok",
             "controls_sha256": "controls-ok",
@@ -173,6 +174,8 @@ def valid_witness(commit: str = COMMIT_A):
         "source_commit": commit,
         "status": "VERIFIED",
         "authority": "NONE",
+        "scientific_authority": "NONE",
+        "backend": "WolframLanguageEvaluator",
         "kind": "spectral_or_hodge",
         "inputs": {
             "graph_sha256": "graph-ok",
@@ -316,6 +319,17 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
         self.assertIn("virus.metrics.time_to_extinction_or_horizon", out["mismatched"])
 
+    def test_run_horizon_must_match_source_control_horizon(self):
+        runs = valid_runs()
+        for receipt in runs.values():
+            receipt["horizon"] = 0
+            receipt["metrics"]["total_mass_by_step"] = [1.0]
+            receipt["metrics"]["time_to_extinction_or_horizon"] = 0
+        out = evaluate(runs=runs)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
+        self.assertIn("virus.horizon", out["mismatched"])
+
     def test_run_receipt_wrong_authority_fails_closed(self):
         runs = valid_runs()
         runs["virus"]["scientific_authority"] = "ACCEPT"
@@ -427,6 +441,27 @@ class ResearchQATests(unittest.TestCase):
                 self.assertEqual(out["contract_status"], "FAIL", out)
                 self.assertEqual(out["reason"], "witness_content_mismatch", out)
                 self.assertIn(f"observed.{key}", out["mismatched"], out)
+
+    def test_witness_scientific_authority_must_remain_none(self):
+        witness = valid_witness()
+        witness["scientific_authority"] = "ACCEPT"
+        out = evaluate(witness=witness)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "witness_content_mismatch")
+        self.assertIn("scientific_authority", out["mismatched"])
+
+    def test_witness_backend_must_match_preregistered_backend(self):
+        for backend in (None, "NumPy"):
+            with self.subTest(backend=backend):
+                witness = valid_witness()
+                if backend is None:
+                    witness.pop("backend")
+                else:
+                    witness["backend"] = backend
+                out = evaluate(witness=witness)
+                self.assertEqual(out["contract_status"], "FAIL", out)
+                self.assertEqual(out["reason"], "witness_content_mismatch", out)
+                self.assertIn("backend", out["mismatched"], out)
 
     def test_witness_and_contract_cannot_collude_on_stale_source_hashes(self):
         contract = json.loads(json.dumps(BASE_CONTRACT))
