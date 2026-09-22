@@ -369,6 +369,20 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
         self.assertIn("virus.metrics.variant_shannon_entropy", out["mismatched"])
 
+    def test_zero_survivors_reject_dominant_mass_above_tolerance(self):
+        runs = valid_runs()
+        runs["virus"]["metrics"]["total_mass_by_step"] = [
+            1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625, 0.0078125, 2e-12
+        ]
+        runs["virus"]["metrics"]["time_to_extinction_or_horizon"] = 8
+        runs["virus"]["metrics"]["surviving_variant_count"] = 0
+        runs["virus"]["metrics"]["dominant_variant_share"] = 0.75
+        runs["virus"]["metrics"]["variant_shannon_entropy"] = 0.562335144619
+        out = evaluate(runs=runs)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
+        self.assertIn("virus.metrics.surviving_variant_count", out["mismatched"])
+
     def test_run_receipt_wrong_authority_fails_closed(self):
         runs = valid_runs()
         runs["virus"]["scientific_authority"] = "ACCEPT"

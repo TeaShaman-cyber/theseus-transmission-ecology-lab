@@ -167,6 +167,8 @@ def _validate_metric_values(
                 if surviving == 0:
                     if final_mass > expected_variant_count * SURVIVAL_TOLERANCE:
                         mismatches.append("surviving_variant_count")
+                    if pmax * final_mass > SURVIVAL_TOLERANCE:
+                        mismatches.append("surviving_variant_count")
                 else:
                     if final_mass <= SURVIVAL_TOLERANCE:
                         mismatches.append("surviving_variant_count")
