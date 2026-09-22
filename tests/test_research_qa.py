@@ -70,6 +70,7 @@ BASE_BINDINGS = {
             "variant_count": 2,
             "variants": ["v0", "v1"],
             "seed_variant": "v0",
+            "perturbation_recovery_ratio": 0.25,
         },
         "meme": {
             "contract_sha256": "contract-ok",
@@ -78,6 +79,7 @@ BASE_BINDINGS = {
             "variant_count": 2,
             "variants": ["m0", "m1"],
             "seed_variant": "m0",
+            "perturbation_recovery_ratio": 0.25,
         },
         "agent": {
             "contract_sha256": "contract-ok",
@@ -86,6 +88,7 @@ BASE_BINDINGS = {
             "variant_count": 2,
             "variants": ["a0", "a1"],
             "seed_variant": "a0",
+            "perturbation_recovery_ratio": 0.25,
         },
     },
     "witness": {
@@ -481,6 +484,14 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["contract_status"], "FAIL")
         self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
         self.assertIn("virus.metrics.dominant_variant_share", out["mismatched"])
+
+    def test_perturbation_recovery_ratio_must_match_source_binding(self):
+        runs = valid_runs()
+        runs["virus"]["metrics"]["perturbation_recovery_ratio"] = 0.9
+        out = evaluate(runs=runs)
+        self.assertEqual(out["contract_status"], "FAIL", out)
+        self.assertEqual(out["reason"], "run_receipt_binding_mismatch", out)
+        self.assertIn("virus.metrics.perturbation_recovery_ratio", out["mismatched"], out)
 
     def test_survivor_floor_uses_receipt_scale_rounding_not_fixed_slack(self):
         runs = valid_runs()

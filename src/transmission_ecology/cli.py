@@ -247,6 +247,17 @@ def write_reference_set(root: Path | str, out: Path | str, *, horizon: int, sour
     controls_path = root / "experiments" / "v0" / "controls.json"
     graph = load_graph(graph_path)
     controls = _load_json(controls_path)
+    source_horizon = controls.get("horizon")
+    if (
+        isinstance(source_horizon, bool)
+        or not isinstance(source_horizon, int)
+        or source_horizon < 0
+    ):
+        raise ValueError("controls horizon must be a nonnegative integer")
+    if horizon != source_horizon:
+        raise ValueError(
+            f"run horizon {horizon} does not match source controls horizon {source_horizon}"
+        )
     seed_node = controls.get("run_seed_node")
     seed_variants = controls.get("run_seed_variants")
     initial_mass = controls.get("run_initial_mass")

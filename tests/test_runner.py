@@ -225,6 +225,15 @@ class RunnerTests(unittest.TestCase):
             ):
                 self.assertAlmostEqual(left, right, places=12)
 
+    def test_reference_set_rejects_horizon_mismatch_with_source_controls(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            with self.assertRaises(ValueError):
+                write_reference_set(
+                    ROOT, out, horizon=5, source_commit="d" * 40
+                )
+            self.assertEqual(list(out.glob("*.json")), [])
+
     def test_reference_set_is_byte_deterministic_for_same_source_commit(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)

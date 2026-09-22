@@ -76,6 +76,7 @@ def _validate_metric_values(
     expected_horizon: int,
     expected_initial_mass: float,
     expected_float_digits: int,
+    expected_perturbation_recovery_ratio: float,
 ) -> list[str]:
     mismatches: list[str] = []
 
@@ -247,6 +248,22 @@ def _validate_metric_values(
                         mismatches.append("variant_shannon_entropy")
                     if entropy_value > entropy_max + compare_tol:
                         mismatches.append("variant_shannon_entropy")
+
+    recovery_ratio = metrics.get("perturbation_recovery_ratio")
+    if (
+        _finite_nonnegative_number(recovery_ratio)
+        and _finite_nonnegative_number(expected_perturbation_recovery_ratio)
+    ):
+        observed = float(recovery_ratio)
+        expected = float(expected_perturbation_recovery_ratio)
+        expected_rounded = float(format(expected, f".{expected_float_digits}g"))
+        interval = (
+            _significant_rounding_half_step(observed, expected_float_digits)
+            + _significant_rounding_half_step(expected_rounded, expected_float_digits)
+            + math.ulp(expected_rounded if expected_rounded != 0.0 else 1.0)
+        )
+        if abs(observed - expected_rounded) > interval:
+            mismatches.append("perturbation_recovery_ratio")
 
     rho = metrics.get("spectral_radius")
     regime = metrics.get("subcritical_or_supercritical")
@@ -465,6 +482,10 @@ def evaluate_research_contract(
             or len(set(expected_variants)) != len(expected_variants)
             or not isinstance(expected_seed_variant, str)
             or expected_seed_variant not in expected_variants
+            or not _finite_nonnegative_number(
+                expected.get("perturbation_recovery_ratio")
+            )
+            or float(expected.get("perturbation_recovery_ratio")) > 1.0
         ):
             return _status("FAIL", "invalid_evidence_binding_contract")
         if receipt.get("horizon") != expected_horizon:
@@ -502,6 +523,9 @@ def evaluate_research_contract(
                 expected_horizon=expected_horizon,
                 expected_initial_mass=float(expected_initial_mass),
                 expected_float_digits=expected_digits,
+                expected_perturbation_recovery_ratio=expected.get(
+                    "perturbation_recovery_ratio"
+                ),
             ):
                 run_mismatches.append(f"{name}.metrics.{metric}")
 
@@ -918,6 +942,182 @@ def _git_blob_json(root: Path, commit: str, relpath: str) -> dict | None:
     return value if isinstance(value, dict) else None
 
 
+def _dense_matvec(matrix: list[list[float]], state: list[float]) -> list[float]:
+    return [
+        math.fsum(coefficient * value for coefficient, value in zip(row, state))
+        for row in matrix
+    ]
+
+
+def _dense_simulate(
+    matrix: list[list[float]], initial: list[float], horizon: int
+) -> list[list[float]]:
+    states = [list(initial)]
+    state = list(initial)
+    for _ in range(horizon):
+        state = _dense_matvec(matrix, state)
+        states.append(state)
+    return states
+
+
+def _source_expected_perturbation_ratio(
+    graph_data: dict,
+    parameters_data: dict,
+    controls_data: dict,
+    substrate: str,
+) -> float | None:
+    nodes = graph_data.get("nodes")
+    edges = graph_data.get("edges")
+    variants = parameters_data.get("variants")
+    transition = parameters_data.get("variant_transition")
+    horizon = controls_data.get("horizon")
+    initial_mass = controls_data.get("run_initial_mass")
+    seed_node = controls_data.get("run_seed_node")
+    seed_variants = controls_data.get("run_seed_variants")
+    if (
+        not isinstance(nodes, list)
+        or not nodes
+        or any(not isinstance(node, str) or not node for node in nodes)
+        or len(set(nodes)) != len(nodes)
+        or not isinstance(edges, list)
+        or not isinstance(variants, list)
+        or not variants
+        or any(not isinstance(variant, str) or not variant for variant in variants)
+        or len(set(variants)) != len(variants)
+        or not _nonnegative_int(horizon)
+        or not _finite_nonnegative_number(initial_mass)
+        or float(initial_mass) <= 0.0
+        or not isinstance(seed_node, str)
+        or seed_node not in nodes
+        or not isinstance(seed_variants, dict)
+        or not isinstance(seed_variants.get(substrate), str)
+        or seed_variants.get(substrate) not in variants
+    ):
+        return None
+
+    node_index = {node: index for index, node in enumerate(nodes)}
+    node_count = len(nodes)
+    variant_count = len(variants)
+    adjacency = [[0.0 for _ in range(node_count)] for _ in range(node_count)]
+    for edge in edges:
+        if not isinstance(edge, dict):
+            return None
+        source = edge.get("source")
+        target = edge.get("target")
+        weight = edge.get("weight")
+        if (
+            source not in node_index
+            or target not in node_index
+            or not _finite_nonnegative_number(weight)
+            or float(weight) <= 0.0
+        ):
+            return None
+        adjacency[node_index[target]][node_index[source]] += float(weight)
+
+    if (
+        not isinstance(transition, list)
+        or len(transition) != variant_count
+        or any(not isinstance(row, list) or len(row) != variant_count for row in transition)
+    ):
+        return None
+    variant_matrix: list[list[float]] = []
+    for row in transition:
+        converted = []
+        for value in row:
+            if not _finite_nonnegative_number(value):
+                return None
+            converted.append(float(value))
+        variant_matrix.append(converted)
+    for column in range(variant_count):
+        if not math.isclose(
+            math.fsum(variant_matrix[row][column] for row in range(variant_count)),
+            1.0,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        ):
+            return None
+
+    transmission = parameters_data.get("transmission_scale")
+    if not _finite_nonnegative_number(transmission):
+        return None
+    scale = float(transmission)
+    if substrate == "virus":
+        loss = parameters_data.get("recovery_loss", 0.0)
+        if (
+            not _finite_nonnegative_number(loss)
+            or float(loss) > 1.0
+        ):
+            return None
+        scale *= 1.0 - float(loss)
+    elif substrate == "meme":
+        retention = parameters_data.get("attention_retention", 1.0)
+        if not _finite_nonnegative_number(retention):
+            return None
+        scale *= float(retention)
+    elif substrate == "agent":
+        weights = parameters_data.get("evaluator_weights")
+        if (
+            not isinstance(weights, list)
+            or len(weights) != variant_count
+            or any(not _finite_nonnegative_number(value) for value in weights)
+        ):
+            return None
+        variant_matrix = [
+            [float(weights[row]) * value for value in variant_matrix[row]]
+            for row in range(variant_count)
+        ]
+    else:
+        return None
+
+    size = node_count * variant_count
+    operator = [[0.0 for _ in range(size)] for _ in range(size)]
+    for target_node in range(node_count):
+        for source_node in range(node_count):
+            graph_weight = adjacency[target_node][source_node]
+            if graph_weight == 0.0:
+                continue
+            for target_variant in range(variant_count):
+                target_index = target_node * variant_count + target_variant
+                for source_variant in range(variant_count):
+                    source_index = source_node * variant_count + source_variant
+                    operator[target_index][source_index] = (
+                        graph_weight
+                        * variant_matrix[target_variant][source_variant]
+                        * scale
+                    )
+
+    initial = [0.0 for _ in range(size)]
+    seed_index = (
+        node_index[seed_node] * variant_count
+        + variants.index(seed_variants[substrate])
+    )
+    initial[seed_index] = float(initial_mass)
+    baseline_states = _dense_simulate(operator, initial, horizon)
+    midpoint = horizon // 2
+    midpoint_state = list(baseline_states[midpoint])
+    variant_masses = [
+        math.fsum(
+            midpoint_state[node * variant_count + variant]
+            for node in range(node_count)
+        )
+        for variant in range(variant_count)
+    ]
+    dominant_variant = max(range(variant_count), key=variant_masses.__getitem__)
+    for node in range(node_count):
+        midpoint_state[node * variant_count + dominant_variant] = 0.0
+    perturbed_states = _dense_simulate(
+        operator, midpoint_state, horizon - midpoint
+    )
+    baseline_total = math.fsum(baseline_states[-1])
+    if baseline_total == 0.0:
+        return 0.0
+    perturbed_total = math.fsum(perturbed_states[-1])
+    ratio = perturbed_total / baseline_total
+    if not math.isfinite(ratio):
+        return None
+    return max(0.0, min(1.0, ratio))
+
+
 def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
     contract_sha256 = _git_blob_sha256(
         root, source_commit, "experiments/v0/contract.json"
@@ -998,6 +1198,11 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
             or seed_variant not in variants
         ):
             return None
+        expected_recovery_ratio = _source_expected_perturbation_ratio(
+            graph_data, parameters_data, controls_data, name
+        )
+        if expected_recovery_ratio is None:
+            return None
         runs[name] = {
             "contract_sha256": contract_sha256,
             "graph_sha256": graph_sha256,
@@ -1005,6 +1210,7 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
             "variant_count": len(variants),
             "variants": variants,
             "seed_variant": seed_variant,
+            "perturbation_recovery_ratio": expected_recovery_ratio,
         }
 
     return {
