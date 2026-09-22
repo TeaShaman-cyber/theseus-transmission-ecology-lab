@@ -59,21 +59,28 @@ BASE_BINDINGS = {
             "contract_sha256": "contract-ok",
             "graph_sha256": "graph-ok",
             "parameters_sha256": "virus-params-ok",
+            "variant_count": 2,
         },
         "meme": {
             "contract_sha256": "contract-ok",
             "graph_sha256": "graph-ok",
             "parameters_sha256": "meme-params-ok",
+            "variant_count": 2,
         },
         "agent": {
             "contract_sha256": "contract-ok",
             "graph_sha256": "graph-ok",
             "parameters_sha256": "agent-params-ok",
+            "variant_count": 2,
         },
     },
     "control": {
         "graph_sha256": "graph-ok",
         "parameters_sha256": "controls-ok",
+        "subcritical_target_radius": 0.8,
+        "supercritical_target_radius": 1.2,
+        "variant_count": 2,
+        "horizon": 8,
     },
 }
 
@@ -293,6 +300,22 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["contract_status"], "FAIL")
         self.assertIn("virus.metrics.total_mass_by_step", out["mismatched"])
 
+    def test_survivor_count_cannot_exceed_source_variant_count(self):
+        runs = valid_runs()
+        runs["virus"]["metrics"]["surviving_variant_count"] = 999
+        out = evaluate(runs=runs)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
+        self.assertIn("virus.metrics.surviving_variant_count", out["mismatched"])
+
+    def test_extinction_time_must_match_mass_trace(self):
+        runs = valid_runs()
+        runs["virus"]["metrics"]["time_to_extinction_or_horizon"] = 0
+        out = evaluate(runs=runs)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
+        self.assertIn("virus.metrics.time_to_extinction_or_horizon", out["mismatched"])
+
     def test_run_receipt_wrong_authority_fails_closed(self):
         runs = valid_runs()
         runs["virus"]["scientific_authority"] = "ACCEPT"
@@ -333,6 +356,16 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["reason"], "control_receipt_binding_mismatch")
         self.assertIn("checks.subcritical.spectral_radius", out["mismatched"])
         self.assertIn("checks.supercritical.spectral_radius", out["mismatched"])
+
+    def test_control_radii_must_match_registered_targets(self):
+        control = valid_control_receipt()
+        control["checks"]["subcritical"]["spectral_radius"] = 0.2
+        control["checks"]["supercritical"]["spectral_radius"] = 7.0
+        out = evaluate(control=control)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "control_receipt_binding_mismatch")
+        self.assertIn("checks.subcritical.spectral_radius_target", out["mismatched"])
+        self.assertIn("checks.supercritical.spectral_radius_target", out["mismatched"])
 
     def test_control_receipt_false_mass_direction_fails_closed(self):
         control = valid_control_receipt()
@@ -384,6 +417,16 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["contract_status"], "FAIL")
         self.assertEqual(out["reason"], "witness_content_mismatch")
         self.assertIn("observed.cycle_rank_beta1", out["mismatched"])
+
+    def test_witness_requires_every_direct_numeric_observation(self):
+        for key in ("cycle_rank_beta1", "hodge1_nullity"):
+            with self.subTest(key=key):
+                witness = valid_witness()
+                del witness["observed"][key]
+                out = evaluate(witness=witness)
+                self.assertEqual(out["contract_status"], "FAIL", out)
+                self.assertEqual(out["reason"], "witness_content_mismatch", out)
+                self.assertIn(f"observed.{key}", out["mismatched"], out)
 
     def test_witness_and_contract_cannot_collude_on_stale_source_hashes(self):
         contract = json.loads(json.dumps(BASE_CONTRACT))

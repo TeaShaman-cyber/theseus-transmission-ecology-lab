@@ -64,6 +64,7 @@ def _validate_metric_values(
     receipt: dict,
     *,
     expected_cycle_rank_beta1: int | None,
+    expected_variant_count: int,
 ) -> list[str]:
     mismatches: list[str] = []
 
@@ -106,7 +107,7 @@ def _validate_metric_values(
                 and all(_finite_nonnegative_number(item) for item in value)
             )
         elif metric == "surviving_variant_count":
-            valid = _nonnegative_int(value)
+            valid = _nonnegative_int(value) and value <= expected_variant_count
         elif metric in ("dominant_variant_share", "perturbation_recovery_ratio"):
             valid = _finite_nonnegative_number(value) and float(value) <= 1.0
         elif metric == "time_to_extinction_or_horizon":
@@ -121,6 +122,23 @@ def _validate_metric_values(
         entropy_upper = 0.0 if surviving == 0 else math.log(surviving)
         if float(entropy) > entropy_upper + 1e-12:
             mismatches.append("variant_shannon_entropy")
+
+    mass_trace = metrics.get("total_mass_by_step")
+    extinction = metrics.get("time_to_extinction_or_horizon")
+    if (
+        horizon_valid
+        and isinstance(mass_trace, list)
+        and len(mass_trace) == horizon + 1
+        and all(_finite_nonnegative_number(item) for item in mass_trace)
+        and _nonnegative_int(extinction)
+    ):
+        expected_extinction = horizon
+        for index, mass in enumerate(mass_trace):
+            if float(mass) <= 1e-12:
+                expected_extinction = index
+                break
+        if extinction != expected_extinction:
+            mismatches.append("time_to_extinction_or_horizon")
 
     rho = metrics.get("spectral_radius")
     regime = metrics.get("subcritical_or_supercritical")
@@ -236,6 +254,14 @@ def evaluate_research_contract(
             if receipt.get(field) != expected.get(field):
                 run_mismatches.append(f"{name}.{field}")
 
+        expected_variant_count = expected.get("variant_count")
+        if (
+            isinstance(expected_variant_count, bool)
+            or not isinstance(expected_variant_count, int)
+            or expected_variant_count <= 0
+        ):
+            return _status("FAIL", "invalid_evidence_binding_contract")
+
         metrics = receipt.get("metrics")
         if not isinstance(metrics, dict):
             run_mismatches.append(f"{name}.metrics")
@@ -245,6 +271,7 @@ def evaluate_research_contract(
                 declared_metrics,
                 receipt,
                 expected_cycle_rank_beta1=expected_cycle_rank_beta1,
+                expected_variant_count=expected_variant_count,
             ):
                 run_mismatches.append(f"{name}.metrics.{metric}")
 
@@ -281,6 +308,22 @@ def evaluate_research_contract(
     for field in ("graph_sha256", "parameters_sha256"):
         if control_receipt.get(field) != expected_control.get(field):
             control_mismatches.append(field)
+
+    expected_subcritical_radius = expected_control.get("subcritical_target_radius")
+    expected_supercritical_radius = expected_control.get("supercritical_target_radius")
+    expected_control_variant_count = expected_control.get("variant_count")
+    expected_control_horizon = expected_control.get("horizon")
+    if (
+        not _finite_nonnegative_number(expected_subcritical_radius)
+        or not _finite_nonnegative_number(expected_supercritical_radius)
+        or not float(expected_subcritical_radius) < 1.0
+        or not float(expected_supercritical_radius) > 1.0
+        or isinstance(expected_control_variant_count, bool)
+        or not isinstance(expected_control_variant_count, int)
+        or expected_control_variant_count <= 0
+        or not _nonnegative_int(expected_control_horizon)
+    ):
+        return _status("FAIL", "invalid_evidence_binding_contract")
 
     required_controls = contract.get("required_controls")
     if (
@@ -323,8 +366,19 @@ def evaluate_research_contract(
         ("spectral_radius", "initial_mass", "final_mass"),
     )
 
+    radius_tolerance = 10.0 ** (-expected_digits)
+
     low_pass = False
     if low is not None:
+        if not math.isclose(
+            low["spectral_radius"],
+            float(expected_subcritical_radius),
+            rel_tol=radius_tolerance,
+            abs_tol=radius_tolerance,
+        ):
+            control_mismatches.append(
+                "checks.subcritical.spectral_radius_target"
+            )
         if not low["spectral_radius"] < 1.0:
             control_mismatches.append(
                 "checks.subcritical.spectral_radius_lt_1"
@@ -338,6 +392,15 @@ def evaluate_research_contract(
 
     high_pass = False
     if high is not None:
+        if not math.isclose(
+            high["spectral_radius"],
+            float(expected_supercritical_radius),
+            rel_tol=radius_tolerance,
+            abs_tol=radius_tolerance,
+        ):
+            control_mismatches.append(
+                "checks.supercritical.spectral_radius_target"
+            )
         if not high["spectral_radius"] > 1.0:
             control_mismatches.append(
                 "checks.supercritical.spectral_radius_gt_1"
@@ -519,18 +582,21 @@ def evaluate_research_contract(
             witness_mismatches.append("observed")
         elif isinstance(observed_checks, dict):
             for key, expected in required_checks.items():
-                if key in witness_observed:
-                    observed_value = witness_observed.get(key)
-                    if isinstance(expected, (int, float)) and not isinstance(expected, bool):
-                        if not (
-                            isinstance(observed_value, (int, float))
-                            and not isinstance(observed_value, bool)
-                            and math.isfinite(float(observed_value))
-                        ):
-                            witness_mismatches.append(f"observed.{key}")
-                            continue
-                    if observed_value != observed_checks.get(key):
-                        witness_mismatches.append(f"observed.{key}")
+                if isinstance(expected, bool):
+                    continue
+                if key not in witness_observed:
+                    witness_mismatches.append(f"observed.{key}")
+                    continue
+                observed_value = witness_observed.get(key)
+                if not (
+                    isinstance(observed_value, (int, float))
+                    and not isinstance(observed_value, bool)
+                    and math.isfinite(float(observed_value))
+                ):
+                    witness_mismatches.append(f"observed.{key}")
+                    continue
+                if observed_value != observed_checks.get(key):
+                    witness_mismatches.append(f"observed.{key}")
 
             sub_rho = witness_observed.get("subcritical_spectral_radius")
             if _finite_nonnegative_number(sub_rho):
@@ -595,6 +661,23 @@ def _git_blob_sha256(root: Path, commit: str, relpath: str) -> str | None:
     return hashlib.sha256(result.stdout).hexdigest()
 
 
+def _git_blob_json(root: Path, commit: str, relpath: str) -> dict | None:
+    result = subprocess.run(
+        ["git", "show", f"{commit}:{relpath}"],
+        cwd=root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        value = json.loads(result.stdout)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
 def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
     contract_sha256 = _git_blob_sha256(
         root, source_commit, "experiments/v0/contract.json"
@@ -605,22 +688,29 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
     controls_sha256 = _git_blob_sha256(
         root, source_commit, "experiments/v0/controls.json"
     )
-    if None in (contract_sha256, graph_sha256, controls_sha256):
+    controls_data = _git_blob_json(
+        root, source_commit, "experiments/v0/controls.json"
+    )
+    if None in (contract_sha256, graph_sha256, controls_sha256) or controls_data is None:
         return None
 
     runs = {}
     for name in REQUIRED_RUNS:
+        parameters_path = f"experiments/v0/parameters/{name}.json"
         parameters_sha256 = _git_blob_sha256(
             root,
             source_commit,
-            f"experiments/v0/parameters/{name}.json",
+            parameters_path,
         )
-        if parameters_sha256 is None:
+        parameters_data = _git_blob_json(root, source_commit, parameters_path)
+        variants = None if parameters_data is None else parameters_data.get("variants")
+        if parameters_sha256 is None or not isinstance(variants, list) or not variants:
             return None
         runs[name] = {
             "contract_sha256": contract_sha256,
             "graph_sha256": graph_sha256,
             "parameters_sha256": parameters_sha256,
+            "variant_count": len(variants),
         }
 
     return {
@@ -628,6 +718,10 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
         "control": {
             "graph_sha256": graph_sha256,
             "parameters_sha256": controls_sha256,
+            "subcritical_target_radius": controls_data.get("subcritical_target_radius"),
+            "supercritical_target_radius": controls_data.get("supercritical_target_radius"),
+            "variant_count": controls_data.get("variant_count"),
+            "horizon": controls_data.get("horizon"),
         },
     }
 
