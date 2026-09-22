@@ -27,6 +27,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("tools/run-v0", text)
         self.assertIn("diff -ru", text)
         self.assertIn("tools/research/check --output receipts/research-qa/v0.json", text)
+        self.assertIn("python-version: '3.11.16'", text)
         self.assertIn("actions/upload-artifact@v4", text)
 
 
