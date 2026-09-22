@@ -11,7 +11,13 @@ from transmission_ecology.graph import adjacency_matrix, cycle_rank_beta1, load_
 from transmission_ecology.metrics import spectral_radius, summarize_run
 from transmission_ecology.models import agent, meme, virus
 from transmission_ecology.models.base import kron_operator, validate_variants
-from transmission_ecology.receipt import build_run_receipt, sha256_file, write_json_atomic
+from transmission_ecology.receipt import (
+    RECEIPT_SCHEMA_VERSION,
+    build_run_receipt,
+    numeric_policy,
+    sha256_file,
+    write_json_atomic,
+)
 from transmission_ecology.state import simulate
 
 
@@ -140,7 +146,8 @@ def run_controls(
         and topology["cycle_rank_beta1"] == 2
     )
     return {
-        "schema_version": 1,
+        "schema_version": RECEIPT_SCHEMA_VERSION,
+        "numeric_policy": numeric_policy(),
         "experiment_id": "deterministic-v0",
         "source_commit": source_commit,
         "graph_sha256": sha256_file(graph_path),

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from transmission_ecology.cli import run_substrate, write_reference_set
 from transmission_ecology.receipt import sha256_file
+from transmission_ecology.research_qa import build_current_receipt
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,7 +26,15 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("spectral_radius", receipt["metrics"])
         self.assertIn("variant_shannon_entropy", receipt["metrics"])
 
-    def test_committed_reference_receipts_bind_current_frozen_inputs(self):
+    def test_reference_receipts_match_frozen_inputs_when_research_surface_is_current(self):
+        qa = build_current_receipt(ROOT)
+        if qa["source_currentness"] == "STALE":
+            self.assertEqual(qa["contract_status"], "UNKNOWN")
+            self.assertEqual(qa["authority"], "NONE")
+            return
+        self.assertIn(qa["source_currentness"], {"CURRENT", "BOUND_UNCHANGED_SURFACE"})
+        self.assertEqual(qa["contract_status"], "PASS")
+
         contract = ROOT / "experiments" / "v0" / "contract.json"
         graph = ROOT / "experiments" / "v0" / "shared-graph.json"
         expected_contract = sha256_file(contract)
@@ -38,7 +47,10 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(receipt["parameters_sha256"], sha256_file(params))
         controls = json.loads((ROOT / "receipts" / "reference" / "v0-controls.json").read_text())
         self.assertEqual(controls["graph_sha256"], expected_graph)
-        self.assertEqual(controls["parameters_sha256"], sha256_file(ROOT / "experiments" / "v0" / "controls.json"))
+        self.assertEqual(
+            controls["parameters_sha256"],
+            sha256_file(ROOT / "experiments" / "v0" / "controls.json"),
+        )
 
     def test_reference_set_is_byte_deterministic_for_same_source_commit(self):
         with tempfile.TemporaryDirectory() as tmp:

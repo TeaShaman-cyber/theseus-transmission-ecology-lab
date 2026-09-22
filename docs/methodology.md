@@ -39,3 +39,16 @@ SupercriticalAboveOne = True
 Primary implementation receipt for the same controls reports radii
 `0.800000000000001` and `1.1999999999999995`; the difference is ordinary
 floating-point representation and does not change the threshold predicates.
+
+## Receipt numeric canonicalization
+
+Computations use ordinary full-precision floating point. Durable JSON receipts
+canonicalize finite floating values to 12 significant decimal digits before
+serialization. This is an evidence-representation policy, not a claim that
+BLAS/LAPACK eigensolver intermediates are bit-identical across machines.
+
+Exact-byte replay therefore means exact equality of the canonicalized receipt
+bytes for the same committed experiment inputs and runtime dependency versions.
+The policy is declared in experiments/v0/contract.json and bound into run and
+control receipts. Nonfinite values fail closed instead of serializing as NaN or
+Infinity.

@@ -29,7 +29,8 @@ def _status(status: str, reason: str, **extra):
 
 def evaluate_research_contract(contract, run_receipts, witness, *, source_commit):
     required = ("question", "hypothesis", "falsifiers", "declared_metrics",
-                "required_controls", "limitations", "independent_witness")
+                "required_controls", "limitations", "independent_witness",
+                "receipt_contract")
     missing = [key for key in required if not contract.get(key)]
     if missing:
         return _status("FAIL", "missing_contract_fields", missing=missing)
@@ -38,6 +39,32 @@ def evaluate_research_contract(contract, run_receipts, witness, *, source_commit
         return _status("UNKNOWN", "missing_run_receipts", missing=absent)
     if any(r.get("source_commit") != source_commit for r in run_receipts.values()):
         return _status("FAIL", "source_commit_mismatch")
+
+    receipt_contract = contract.get("receipt_contract", {})
+    expected_schema = receipt_contract.get("schema_version")
+    expected_digits = receipt_contract.get("float_significant_digits")
+    if (
+        isinstance(expected_schema, bool)
+        or not isinstance(expected_schema, int)
+        or expected_schema <= 0
+        or isinstance(expected_digits, bool)
+        or not isinstance(expected_digits, int)
+        or expected_digits <= 0
+    ):
+        return _status("FAIL", "invalid_receipt_contract")
+    mismatched = [
+        name
+        for name, receipt in run_receipts.items()
+        if receipt.get("schema_version") != expected_schema
+        or receipt.get("numeric_policy", {}).get("float_significant_digits")
+        != expected_digits
+    ]
+    if mismatched:
+        return _status(
+            "FAIL",
+            "receipt_contract_mismatch",
+            mismatched=sorted(mismatched),
+        )
     if any(not r.get("controls", {}).get("all_passed") for r in run_receipts.values()):
         return _status("FAIL", "required_control_failed")
     if contract["independent_witness"].get("required"):
@@ -71,6 +98,18 @@ def _git_head(root: Path) -> str:
 
 
 def _source_currentness(root: Path, source_commit: str, head: str) -> tuple[str, str | None]:
+    dirty = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all", "--", *EXPERIMENT_SURFACE_PATHS],
+        cwd=root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        check=False,
+    )
+    if dirty.returncode != 0:
+        return "UNKNOWN", "working_tree_status_unavailable"
+    if dirty.stdout.strip():
+        return "STALE", "working_tree_experiment_surface_dirty"
     if source_commit == head:
         return "CURRENT", None
     ancestor = subprocess.run(

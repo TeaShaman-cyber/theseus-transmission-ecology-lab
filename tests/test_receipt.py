@@ -12,6 +12,17 @@ class ReceiptTests(unittest.TestCase):
         self.assertEqual(canonical_json_bytes(payload), canonical_json_bytes(payload))
         self.assertEqual(canonical_json_bytes(payload), b'{"a":{"z":0.5},"b":[2,1]}\n')
 
+    def test_canonical_serialization_stabilizes_last_bit_float_drift(self):
+        left = {"x": 0.7934836549937438, "nested": [1.0815474233769395]}
+        right = {"x": 0.7934836549937433, "nested": [1.081547423376939]}
+        self.assertEqual(canonical_json_bytes(left), canonical_json_bytes(right))
+
+    def test_canonical_serialization_rejects_nonfinite_floats(self):
+        for value in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    canonical_json_bytes({"x": value})
+
     def test_run_receipt_binds_provenance_and_has_no_authority(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -31,6 +42,8 @@ class ReceiptTests(unittest.TestCase):
                 metrics={"spectral_radius": 0.8},
                 controls={"all_passed": True},
             )
+            self.assertEqual(receipt["schema_version"], 2)
+            self.assertEqual(receipt["numeric_policy"], {"float_significant_digits": 12})
             self.assertEqual(receipt["source_commit"], "a" * 40)
             self.assertEqual(receipt["scientific_authority"], "NONE")
             self.assertEqual(receipt["contract_sha256"], sha256_file(paths["contract"]))
