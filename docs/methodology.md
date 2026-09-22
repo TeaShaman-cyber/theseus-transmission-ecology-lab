@@ -58,3 +58,9 @@ canonicalization, the independent Wolfram calculation was rerun against the
 unchanged graph and controls inputs and bound to execution commit
 `2bfe18806ddb182d7869d11876d5cbaa57c20c16`. The mathematical results
 remained unchanged.
+
+Second reverification note: after Codex review tightened witness-content
+validation, dirty-evidence provenance, and reference-write semantics, the
+Wolfram calculation was rerun independently and bound to execution commit
+`0e9929a365235b990aca93827034b68118d70ea7`. Graph and controls hashes
+remain unchanged and all required mathematical checks reproduced.
