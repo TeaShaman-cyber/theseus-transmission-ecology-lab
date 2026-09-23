@@ -89,11 +89,11 @@ A step receipt includes the relevant state plus `source_ready`, `adapted`, `pers
 
 For **stage-attribution verdicts**:
 
-A matched identity control is a paired intervention, not merely another receipt. It must bind the exact control receipt/reference and keep every nonintervened field identical to the tested case: input state, `V`, graph fixture/`A`, `transmission_scale`, opposite gate, node/variant dimensions, horizon/step, and numeric policy. The only allowed difference is replacement of the attributed gate with identity.
+A matched identity control is a paired intervention, not merely another receipt. **Each claimed stage has its own control reference.** For source-stage attribution, replace only `W_source` with identity and compare `source_ready`; for target-stage attribution, replace only `W_target` with identity and compare `persistent`. Every nonintervened field must match the tested case exactly: input state, `V`, graph fixture/`A`, `transmission_scale`, the opposite gate, node/variant dimensions, horizon/step, and numeric policy.
 
-- `PASS`: all required witnesses are present, bound and internally consistent; the matched identity control satisfies the equality contract above; and every claimed non-identity stage differs from that control witness at canonical precision.
-- `UNKNOWN`: stage attribution cannot be established, including final-state-only evidence, an extinct/zero state, or an exercised state on which a claimed gate is observationally identical to its valid matched identity control.
-- `FAIL`: contradictory state, shape mismatch, non-finite/negative values, binding mismatch, omitted identity control, missing control reference, or any nonintervened-field mismatch between tested and control receipts.
+- `PASS`: all required witnesses are present, bound and internally consistent; every claimed stage has its own valid matched identity control; and the witness immediately after that stage differs from its control counterpart at canonical precision.
+- `UNKNOWN`: stage attribution cannot be established, including final-state-only evidence, an extinct/zero state, an exercised state on which the claimed gate is observationally identical to its valid control, **or an absent/unavailable identity-control receipt**.
+- `FAIL`: contradictory state, shape mismatch, non-finite/negative values, binding mismatch, or a supplied control whose reference, shape, nonintervened fields, or declared intervention are invalid/mismatched.
 
 A structurally valid receipt may therefore still have `stage_attribution = UNKNOWN`. `UNKNOWN` must never become `PASS` only because the final state matches.
 
