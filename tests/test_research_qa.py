@@ -69,6 +69,19 @@ BASE_CONTRACT = {
     },
 }
 
+BASE_EXPECTED_METRICS = {
+    "spectral_radius": 0.8,
+    "subcritical_or_supercritical": "subcritical",
+    "cycle_rank_beta1": 2,
+    "total_mass_by_step": [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2],
+    "variant_shannon_entropy": 0.562335144619,
+    "surviving_variant_count": 2,
+    "dominant_variant_share": 0.75,
+    "time_to_extinction_or_horizon": 8,
+    "perturbation_recovery_ratio": 0.25,
+}
+
+
 BASE_BINDINGS = {
     "runs": {
         "virus": {
@@ -79,6 +92,7 @@ BASE_BINDINGS = {
             "variants": ["v0", "v1"],
             "seed_variant": "v0",
             "perturbation_recovery_ratio": 0.25,
+            "expected_metrics": json.loads(json.dumps(BASE_EXPECTED_METRICS)),
         },
         "meme": {
             "contract_sha256": "contract-ok",
@@ -88,6 +102,7 @@ BASE_BINDINGS = {
             "variants": ["m0", "m1"],
             "seed_variant": "m0",
             "perturbation_recovery_ratio": 0.25,
+            "expected_metrics": json.loads(json.dumps(BASE_EXPECTED_METRICS)),
         },
         "agent": {
             "contract_sha256": "contract-ok",
@@ -97,6 +112,7 @@ BASE_BINDINGS = {
             "variants": ["a0", "a1"],
             "seed_variant": "a0",
             "perturbation_recovery_ratio": 0.25,
+            "expected_metrics": json.loads(json.dumps(BASE_EXPECTED_METRICS)),
         },
     },
     "witness": {
@@ -146,6 +162,7 @@ def run_receipt(
         },
         "metrics": {
             "spectral_radius": 0.8,
+            "subcritical_or_supercritical": "subcritical",
             "cycle_rank_beta1": 2,
             "total_mass_by_step": [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2],
             "variant_shannon_entropy": 0.562335144619,
@@ -261,6 +278,67 @@ def evaluate(runs=None, control=None, witness=None, *, source_commit=COMMIT_A, b
 
 
 class ResearchQATests(unittest.TestCase):
+    def test_run_receipt_schema_and_digits_require_integer_domain(self):
+        mutations = (
+            ("schema_version", lambda receipt: receipt.__setitem__("schema_version", 3.0)),
+            (
+                "numeric_policy.float_significant_digits",
+                lambda receipt: receipt["numeric_policy"].__setitem__(
+                    "float_significant_digits", 12.0
+                ),
+            ),
+            ("horizon", lambda receipt: receipt.__setitem__("horizon", 8.0)),
+        )
+        for expected_field, mutate in mutations:
+            with self.subTest(expected_field=expected_field):
+                runs = valid_runs()
+                mutate(runs["virus"])
+                out = evaluate(runs=runs)
+                self.assertEqual(out["contract_status"], "FAIL", out)
+
+    def test_witness_schema_version_requires_integer_domain(self):
+        witness = valid_witness()
+        witness["schema_version"] = 2.0
+        out = evaluate(witness=witness)
+        self.assertEqual(out["contract_status"], "FAIL", out)
+        self.assertIn("schema_version", out["mismatched"], out)
+
+    def test_large_numeric_evidence_fails_closed_without_overflow(self):
+        huge = 10 ** 400
+        runs = valid_runs()
+        runs["virus"]["metrics"]["spectral_radius"] = huge
+        out = evaluate(runs=runs)
+        self.assertEqual(out["contract_status"], "FAIL", out)
+        control = valid_control_receipt()
+        control["checks"]["subcritical"]["spectral_radius"] = huge
+        out = evaluate(control=control)
+        self.assertEqual(out["contract_status"], "FAIL", out)
+
+    def test_source_replay_rejects_corrupted_declared_run_metrics(self):
+        cases = []
+        runs = valid_runs()
+        runs["virus"]["metrics"]["spectral_radius"] = 999.0
+        runs["virus"]["metrics"]["subcritical_or_supercritical"] = "supercritical"
+        cases.append(("spectral_radius", runs))
+
+        runs = valid_runs()
+        trace = runs["virus"]["metrics"]["total_mass_by_step"]
+        trace[1:-1] = [777.0] * (len(trace) - 2)
+        cases.append(("total_mass_by_step", runs))
+
+        runs = valid_runs()
+        metrics = runs["virus"]["metrics"]
+        metrics["surviving_variant_count"] = 2
+        metrics["dominant_variant_share"] = 0.5
+        metrics["variant_shannon_entropy"] = 0.69314718056
+        cases.append(("diversity", runs))
+
+        for label, runs in cases:
+            with self.subTest(label=label):
+                out = evaluate(runs=runs)
+                self.assertEqual(out["contract_status"], "FAIL", out)
+                self.assertEqual(out["reason"], "run_receipt_binding_mismatch", out)
+
     def test_v0_contract_schema_version_rejects_boolean_alias(self):
         contract = json.loads(json.dumps(BASE_CONTRACT))
         contract["schema_version"] = True

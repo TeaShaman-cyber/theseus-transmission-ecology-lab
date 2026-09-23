@@ -70,20 +70,26 @@ def _status(status: str, reason: str, **extra):
 
 
 def _validate_receipt_policy(receipt: dict, receipt_contract: dict) -> bool:
+    schema = receipt.get("schema_version")
+    digits = receipt.get("numeric_policy", {}).get("float_significant_digits")
     return (
-        receipt.get("schema_version") == receipt_contract.get("schema_version")
-        and receipt.get("numeric_policy", {}).get("float_significant_digits")
-        == receipt_contract.get("float_significant_digits")
+        not isinstance(schema, bool)
+        and isinstance(schema, int)
+        and schema == receipt_contract.get("schema_version")
+        and not isinstance(digits, bool)
+        and isinstance(digits, int)
+        and digits == receipt_contract.get("float_significant_digits")
     )
 
 
 def _finite_nonnegative_number(value) -> bool:
-    return (
-        not isinstance(value, bool)
-        and isinstance(value, (int, float))
-        and math.isfinite(float(value))
-        and float(value) >= 0.0
-    )
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        converted = float(value)
+    except (OverflowError, ValueError):
+        return False
+    return math.isfinite(converted) and converted >= 0.0
 
 
 def _nonnegative_int(value) -> bool:
@@ -119,6 +125,60 @@ def _significant_rounding_half_step(
     else:
         exponent = math.floor(math.log10(abs(value)))
     return 0.5 * (10.0 ** (exponent - digits + 1))
+
+
+def _matches_rounded_numeric(observed, expected, digits: int) -> bool:
+    if not _finite_nonnegative_number(observed) or not _finite_nonnegative_number(expected):
+        return False
+    observed_value = float(observed)
+    expected_value = float(expected)
+    expected_rounded = float(format(expected_value, f".{digits}g"))
+    interval = (
+        _significant_rounding_half_step(observed_value, digits)
+        + _significant_rounding_half_step(expected_rounded, digits)
+        + math.ulp(expected_rounded if expected_rounded != 0.0 else 1.0)
+    )
+    return abs(observed_value - expected_rounded) <= interval
+
+
+def _source_metric_mismatches(
+    observed: dict, expected: dict, digits: int
+) -> list[str]:
+    mismatches: list[str] = []
+    integer_metrics = {
+        "cycle_rank_beta1",
+        "surviving_variant_count",
+        "time_to_extinction_or_horizon",
+    }
+    float_metrics = {
+        "spectral_radius",
+        "variant_shannon_entropy",
+        "dominant_variant_share",
+        "perturbation_recovery_ratio",
+    }
+    for key in integer_metrics:
+        if not _nonnegative_int(observed.get(key)) or observed.get(key) != expected.get(key):
+            mismatches.append(key)
+    for key in float_metrics:
+        if not _matches_rounded_numeric(observed.get(key), expected.get(key), digits):
+            mismatches.append(key)
+    observed_trace = observed.get("total_mass_by_step")
+    expected_trace = expected.get("total_mass_by_step")
+    if (
+        not isinstance(observed_trace, list)
+        or not isinstance(expected_trace, list)
+        or len(observed_trace) != len(expected_trace)
+        or any(
+            not _matches_rounded_numeric(left, right, digits)
+            for left, right in zip(observed_trace, expected_trace)
+        )
+    ):
+        mismatches.append("total_mass_by_step")
+    if observed.get("subcritical_or_supercritical") != expected.get(
+        "subcritical_or_supercritical"
+    ):
+        mismatches.append("subcritical_or_supercritical")
+    return mismatches
 
 
 def _validate_metric_values(
@@ -605,7 +665,8 @@ def evaluate_research_contract(
             or float(expected.get("perturbation_recovery_ratio")) > 1.0
         ):
             return _status("FAIL", "invalid_evidence_binding_contract")
-        if receipt.get("horizon") != expected_horizon:
+        receipt_horizon = receipt.get("horizon")
+        if not _nonnegative_int(receipt_horizon) or receipt_horizon != expected_horizon:
             run_mismatches.append(f"{name}.horizon")
 
         initial_condition = receipt.get("initial_condition")
@@ -645,6 +706,13 @@ def evaluate_research_contract(
                 ),
             ):
                 run_mismatches.append(f"{name}.metrics.{metric}")
+            expected_metrics = expected.get("expected_metrics")
+            if not isinstance(expected_metrics, dict):
+                return _status("FAIL", "invalid_evidence_binding_contract")
+            for metric in _source_metric_mismatches(
+                metrics, expected_metrics, expected_digits
+            ):
+                run_mismatches.append(f"{name}.metrics.{metric}.source")
 
         controls = receipt.get("controls")
         if not isinstance(controls, dict):
@@ -916,7 +984,11 @@ def evaluate_research_contract(
             witness_mismatches.append("authority")
         if witness.get("scientific_authority") != "NONE":
             witness_mismatches.append("scientific_authority")
-        if witness.get("schema_version") != witness_schema_version:
+        observed_witness_schema = witness.get("schema_version")
+        if (
+            not _nonnegative_int(observed_witness_schema)
+            or observed_witness_schema != witness_schema_version
+        ):
             witness_mismatches.append("schema_version")
         if witness.get("backend") != expected_backend:
             witness_mismatches.append("backend")
@@ -1081,12 +1153,12 @@ def _dense_simulate(
     return states
 
 
-def _source_expected_perturbation_ratio(
+def _source_dense_run_context(
     graph_data: dict,
     parameters_data: dict,
     controls_data: dict,
     substrate: str,
-) -> float | None:
+) -> dict | None:
     nodes = graph_data.get("nodes")
     edges = graph_data.get("edges")
     variants = parameters_data.get("variants")
@@ -1164,10 +1236,7 @@ def _source_expected_perturbation_ratio(
     scale = float(transmission)
     if substrate == "virus":
         loss = parameters_data.get("recovery_loss", 0.0)
-        if (
-            not _finite_nonnegative_number(loss)
-            or float(loss) > 1.0
-        ):
+        if not _finite_nonnegative_number(loss) or float(loss) > 1.0:
             return None
         scale *= 1.0 - float(loss)
     elif substrate == "meme":
@@ -1216,24 +1285,142 @@ def _source_expected_perturbation_ratio(
     baseline_states = _dense_simulate(operator, initial, horizon)
     midpoint = horizon // 2
     midpoint_state = list(baseline_states[midpoint])
-    variant_masses = [
+    midpoint_variant_masses = [
         math.fsum(
             midpoint_state[node * variant_count + variant]
             for node in range(node_count)
         )
         for variant in range(variant_count)
     ]
-    dominant_variant = max(range(variant_count), key=variant_masses.__getitem__)
+    dominant_variant = max(
+        range(variant_count), key=midpoint_variant_masses.__getitem__
+    )
     for node in range(node_count):
         midpoint_state[node * variant_count + dominant_variant] = 0.0
     perturbed_states = _dense_simulate(
         operator, midpoint_state, horizon - midpoint
     )
-    baseline_total = math.fsum(baseline_states[-1])
+    return {
+        "operator": operator,
+        "states": baseline_states,
+        "perturbed_final": perturbed_states[-1],
+        "node_count": node_count,
+        "variant_count": variant_count,
+        "horizon": horizon,
+    }
+
+
+def _dense_power_spectral_radius(matrix: list[list[float]]) -> float | None:
+    if not matrix or any(len(row) != len(matrix) for row in matrix):
+        return None
+    size = len(matrix)
+    vector = [1.0 / size for _ in range(size)]
+    recent: list[float] = []
+    for _ in range(512):
+        product = _dense_matvec(matrix, vector)
+        norm = math.fsum(abs(value) for value in product)
+        if not math.isfinite(norm):
+            return None
+        if norm == 0.0:
+            return 0.0
+        vector = [value / norm for value in product]
+        recent.append(norm)
+        if len(recent) > 16:
+            recent.pop(0)
+    if len(recent) != 16:
+        return None
+    spread = max(recent) - min(recent)
+    if spread > 1e-13 * max(1.0, abs(recent[-1])):
+        return None
+    return recent[-1]
+
+
+def _source_expected_run_metrics(
+    graph_data: dict,
+    parameters_data: dict,
+    controls_data: dict,
+    substrate: str,
+    *,
+    cycle_rank_beta1: int,
+) -> dict | None:
+    context = _source_dense_run_context(
+        graph_data, parameters_data, controls_data, substrate
+    )
+    if context is None:
+        return None
+    operator = context["operator"]
+    states = context["states"]
+    perturbed_final = context["perturbed_final"]
+    node_count = context["node_count"]
+    variant_count = context["variant_count"]
+    horizon = context["horizon"]
+
+    rho = _dense_power_spectral_radius(operator)
+    if rho is None:
+        return None
+    totals = [math.fsum(state) for state in states]
+    final = states[-1]
+    variant_masses = [
+        math.fsum(
+            final[node * variant_count + variant]
+            for node in range(node_count)
+        )
+        for variant in range(variant_count)
+    ]
+    final_total = math.fsum(variant_masses)
+    if final_total == 0.0:
+        entropy = 0.0
+        dominant_share = 0.0
+    else:
+        probabilities = [mass / final_total for mass in variant_masses if mass > 0.0]
+        entropy = -math.fsum(p * math.log(p) for p in probabilities)
+        dominant_share = max(variant_masses) / final_total
+    survivors = sum(mass > SURVIVAL_TOLERANCE for mass in variant_masses)
+    extinction = horizon
+    for index, total in enumerate(totals):
+        if total <= SURVIVAL_TOLERANCE:
+            extinction = index
+            break
+    baseline_total = totals[-1]
+    if baseline_total == 0.0:
+        recovery = 0.0
+    else:
+        recovery = math.fsum(perturbed_final) / baseline_total
+        if not math.isfinite(recovery):
+            return None
+        recovery = max(0.0, min(1.0, recovery))
+    return {
+        "spectral_radius": rho,
+        "subcritical_or_supercritical": (
+            "subcritical" if rho < 1.0
+            else "supercritical" if rho > 1.0
+            else "critical"
+        ),
+        "cycle_rank_beta1": cycle_rank_beta1,
+        "total_mass_by_step": totals,
+        "variant_shannon_entropy": entropy,
+        "surviving_variant_count": survivors,
+        "dominant_variant_share": dominant_share,
+        "time_to_extinction_or_horizon": extinction,
+        "perturbation_recovery_ratio": recovery,
+    }
+
+
+def _source_expected_perturbation_ratio(
+    graph_data: dict,
+    parameters_data: dict,
+    controls_data: dict,
+    substrate: str,
+) -> float | None:
+    context = _source_dense_run_context(
+        graph_data, parameters_data, controls_data, substrate
+    )
+    if context is None:
+        return None
+    baseline_total = math.fsum(context["states"][-1])
     if baseline_total == 0.0:
         return 0.0
-    perturbed_total = math.fsum(perturbed_states[-1])
-    ratio = perturbed_total / baseline_total
+    ratio = math.fsum(context["perturbed_final"]) / baseline_total
     if not math.isfinite(ratio):
         return None
     return max(0.0, min(1.0, ratio))
@@ -1397,11 +1584,16 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
             or seed_variant not in variants
         ):
             return None
-        expected_recovery_ratio = _source_expected_perturbation_ratio(
-            graph_data, parameters_data, controls_data, name
+        expected_metrics = _source_expected_run_metrics(
+            graph_data,
+            parameters_data,
+            controls_data,
+            name,
+            cycle_rank_beta1=expected_witness_checks["cycle_rank_beta1"],
         )
-        if expected_recovery_ratio is None:
+        if expected_metrics is None:
             return None
+        expected_recovery_ratio = expected_metrics["perturbation_recovery_ratio"]
         runs[name] = {
             "contract_sha256": contract_sha256,
             "graph_sha256": graph_sha256,
@@ -1410,6 +1602,7 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
             "variants": variants,
             "seed_variant": seed_variant,
             "perturbation_recovery_ratio": expected_recovery_ratio,
+            "expected_metrics": expected_metrics,
         }
 
     return {
