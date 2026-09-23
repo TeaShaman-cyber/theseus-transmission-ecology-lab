@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from transmission_ecology.research_qa import (
     _source_currentness,
+    _source_expected_control_checks,
     build_current_receipt,
     evaluate_research_contract,
 )
@@ -565,6 +566,43 @@ class ResearchQATests(unittest.TestCase):
                 )
                 self.assertEqual(out["contract_status"], "FAIL", out)
                 self.assertEqual(out["reason"], "invalid_receipt_contract", out)
+
+    def test_unbounded_float_precision_fails_before_formatting(self):
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["receipt_contract"]["float_significant_digits"] = 10 ** 100
+        runs = valid_runs()
+        for receipt in runs.values():
+            receipt["numeric_policy"]["float_significant_digits"] = 10 ** 100
+        control = valid_control_receipt()
+        control["numeric_policy"]["float_significant_digits"] = 10 ** 100
+        out = evaluate_research_contract(
+            contract,
+            runs,
+            control,
+            valid_witness(),
+            source_commit=COMMIT_A,
+            evidence_bindings=BASE_BINDINGS,
+        )
+        self.assertEqual(out["contract_status"], "FAIL", out)
+        self.assertEqual(out["reason"], "invalid_v0_contract_profile", out)
+        self.assertIn(
+            "receipt_contract.float_significant_digits",
+            out["mismatched"],
+            out,
+        )
+
+    def test_source_control_dimension_is_bounded_before_allocation(self):
+        graph = {
+            "nodes": ["n1"],
+            "edges": [{"source": "n1", "target": "n1", "weight": 1.0}],
+        }
+        controls = {
+            "variant_count": 10 ** 100,
+            "horizon": 1,
+            "subcritical_target_radius": 0.8,
+            "supercritical_target_radius": 1.2,
+        }
+        self.assertIsNone(_source_expected_control_checks(graph, controls))
 
     def test_contract_shape_property_sweep_fails_closed(self):
         bad_json_scalars = (None, True, 0, 1.5, "", [], {})
@@ -1346,6 +1384,32 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["contract_status"], "FAIL")
         self.assertEqual(out["reason"], "invalid_run_receipt_type")
         self.assertIn("virus.receipt", out["mismatched"])
+
+    def test_build_current_receipt_nonhashable_source_commit_fails_closed(self):
+        original = __import__(
+            "transmission_ecology.research_qa", fromlist=["_maybe_load"]
+        )._maybe_load
+
+        def malformed_virus_commit(path):
+            receipt = original(path)
+            if path.name == "v0-virus.json" and isinstance(receipt, dict):
+                receipt = json.loads(json.dumps(receipt))
+                receipt["source_commit"] = []
+            return receipt
+
+        with (
+            patch(
+                "transmission_ecology.research_qa._maybe_load",
+                side_effect=malformed_virus_commit,
+            ),
+            patch(
+                "transmission_ecology.research_qa._source_currentness",
+                return_value=("BOUND_UNCHANGED_SURFACE", None),
+            ),
+        ):
+            out = build_current_receipt(ROOT)
+        self.assertEqual(out["contract_status"], "FAIL", out)
+        self.assertEqual(out["reason"], "mixed_or_missing_run_source_commits", out)
 
     def test_stored_research_receipt_binds_current_evidence_content(self):
         receipt_path = ROOT / "receipts" / "research-qa" / "v0.json"
