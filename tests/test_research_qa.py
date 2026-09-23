@@ -261,6 +261,46 @@ def evaluate(runs=None, control=None, witness=None, *, source_commit=COMMIT_A, b
 
 
 class ResearchQATests(unittest.TestCase):
+    def test_v0_contract_schema_version_rejects_boolean_alias(self):
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["schema_version"] = True
+        out = evaluate_research_contract(
+            contract,
+            valid_runs(),
+            valid_control_receipt(),
+            valid_witness(),
+            source_commit=COMMIT_A,
+            evidence_bindings=BASE_BINDINGS,
+        )
+        self.assertEqual(out["contract_status"], "FAIL", out)
+        self.assertEqual(out["reason"], "invalid_v0_contract_profile", out)
+        self.assertIn("schema_version", out["mismatched"], out)
+
+    def test_v0_witness_huge_integer_fails_closed_without_overflow(self):
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        huge = 10 ** 10000
+        contract["independent_witness"]["required_checks"][
+            "weak_component_count"
+        ] = huge
+        witness = valid_witness()
+        witness["checks"]["weak_component_count"] = huge
+        witness["observed"]["weak_component_count"] = huge
+        out = evaluate_research_contract(
+            contract,
+            valid_runs(),
+            valid_control_receipt(),
+            witness,
+            source_commit=COMMIT_A,
+            evidence_bindings=BASE_BINDINGS,
+        )
+        self.assertEqual(out["contract_status"], "FAIL", out)
+        self.assertEqual(out["reason"], "invalid_v0_contract_profile", out)
+        self.assertIn(
+            "independent_witness.required_checks.values",
+            out["mismatched"],
+            out,
+        )
+
     def test_v0_witness_numeric_checks_reject_boolean_aliases(self):
         contract = json.loads(json.dumps(BASE_CONTRACT))
         contract["independent_witness"]["required_checks"]["weak_component_count"] = True

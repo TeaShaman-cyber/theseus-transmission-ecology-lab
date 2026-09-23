@@ -94,11 +94,11 @@ def _same_typed_scalar(left, right) -> bool:
     if isinstance(left, bool) or isinstance(right, bool):
         return isinstance(left, bool) and isinstance(right, bool) and left is right
     if isinstance(left, (int, float)) and isinstance(right, (int, float)):
-        return (
-            math.isfinite(float(left))
-            and math.isfinite(float(right))
-            and float(left) == float(right)
-        )
+        if isinstance(left, float) and not math.isfinite(left):
+            return False
+        if isinstance(right, float) and not math.isfinite(right):
+            return False
+        return left == right
     return type(left) is type(right) and left == right
 
 
@@ -349,7 +349,12 @@ def evaluate_research_contract(
             "invalid_v0_contract_profile",
             mismatched=["contract"],
         )
-    if contract.get("schema_version") != V0_CONTRACT_SCHEMA_VERSION:
+    schema_version = contract.get("schema_version")
+    if (
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+        or schema_version != V0_CONTRACT_SCHEMA_VERSION
+    ):
         profile_mismatches.append("schema_version")
 
     declared_metrics = contract.get("declared_metrics")
