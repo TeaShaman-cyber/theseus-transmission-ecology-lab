@@ -40,7 +40,7 @@ K_global = s * (A ⊗ (W_target @ V @ W_source))
 
 This preserves v0 graph propagation and `transmission_scale`; only the variant factor is refined. The two-variant fixture below is a local stage-placement oracle, not a replacement for the graph-level simulation.
 
-- `W_source`: pre-transfer success or exposure gate: ranking, visibility, permission to propagate, source reputation, pre-transfer review.
+- `W_source`: **pre-adaptation eligibility/selection gate** in the variant pipeline: ranking, visibility, permission to propagate, source reputation, or review that acts before `V`. With a homogeneous variant-only gate, this model does **not** identify whether that gate was physically applied at source nodes before graph transfer or at destination nodes immediately before adaptation.
 - `V`: local adaptation / transformation. Columns are source variants; rows are destination variants.
 - `W_target`: post-adaptation viability: verification, acceptance, retention, persistence, rejection.
 
@@ -65,7 +65,7 @@ both = I      -> V
 
 Observing only `K = W_target @ V @ W_source` does not uniquely identify the factorization. A final trajectory may establish composed dynamics but not where selection acted.
 
-A claim about **stage placement for an exercised lineage** requires stage-local witnesses. Missing stage witnesses force `stage_attribution = UNKNOWN`; matching only the final state cannot upgrade that result. The minimal one-hot fixture below is not a parameter-identification experiment and cannot identify unexercised columns of `V`, `W_source`, or `W_target`.
+A claim about **placement relative to adaptation for an exercised lineage** requires stage-local witnesses. Missing stage witnesses force `stage_attribution = UNKNOWN`; matching only the final state cannot upgrade that result. Because a homogeneous variant-only `W_source` commutes with graph propagation `(A ⊗ I)`, these witnesses can distinguish **before `V` versus after `V`**, but cannot by themselves identify physical source-node versus destination-node location before adaptation. The minimal one-hot fixture below is not a parameter-identification experiment and cannot identify unexercised columns of `V`, `W_source`, or `W_target`.
 
 ## First deterministic fixture
 
@@ -118,11 +118,11 @@ source field scar
   -> release + later live repaired-path observation
 ```
 
-It supports the existence of separately observable pre-transfer and post-adaptation selection surfaces. It does not identify numeric weights and is not parameter-fitting evidence.
+It supports the existence of separately observable **pre-adaptation** and post-adaptation selection surfaces in the lineage. Under the homogeneous matrix model above, it does not by itself identify whether the pre-adaptation gate is physically source-node or destination-node-local, and it does not identify numeric weights. It is not parameter-fitting evidence.
 
 ## Falsifiers and stopping rules
 
-The two-stage refinement is unsupported if no observed lineage can independently identify a source-side gate and a target-side persistence gate. The first fixture tests **stage-placement observability for one exercised lineage**, not uniqueness of the full factorization. If a later experiment claims parameter identification, it fails that stronger claim whenever distinct parameterizations reproduce all declared intermediate observations across the required linearly independent inputs.
+The two-stage refinement is unsupported if no observed lineage can independently identify a **pre-adaptation** gate and a post-adaptation persistence gate. The first fixture tests **placement relative to adaptation for one exercised lineage**, not physical graph location and not uniqueness of the full factorization. A stronger claim about source-node versus destination-node placement requires non-commuting evidence such as node-dependent gates, edge-level interventions, or an external witness that binds the physical stage. If a later experiment claims parameter identification, it fails that stronger claim whenever distinct parameterizations reproduce all declared intermediate observations across the required linearly independent inputs.
 
 Do not add stochasticity, nonlinear gates, or multi-artifact composition until this deterministic stage-identification contract earns them through a concrete unresolved mechanism.
 
