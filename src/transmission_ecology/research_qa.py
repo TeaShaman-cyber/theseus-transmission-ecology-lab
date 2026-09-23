@@ -19,6 +19,10 @@ from transmission_ecology.provenance import (
 
 REQUIRED_RUNS = ("virus", "meme", "agent")
 V0_CONTRACT_SCHEMA_VERSION = 1
+V0_RECEIPT_SCHEMA_VERSION = 3
+V0_FLOAT_SIGNIFICANT_DIGITS = 12
+V0_VARIANT_COUNT = 2
+V0_HORIZON = 8
 V0_DECLARED_METRICS = (
     "spectral_radius",
     "cycle_rank_beta1",
@@ -30,6 +34,7 @@ V0_DECLARED_METRICS = (
     "perturbation_recovery_ratio",
 )
 V0_REQUIRED_CONTROLS = ("subcritical", "supercritical", "topology_only")
+V0_MACHINE_DISPOSITION = "UNKNOWN_WITHIN_CURRENT_CONTRACT"
 V0_REQUIRED_WITNESS_CHECKS = frozenset(
     {
         "vertex_count",
@@ -82,6 +87,13 @@ def _validate_receipt_policy(receipt: dict, receipt_contract: dict) -> bool:
         and not isinstance(digits, bool)
         and isinstance(digits, int)
         and digits == receipt_contract.get("float_significant_digits")
+    )
+
+
+def _valid_source_commit(value) -> bool:
+    return (
+        isinstance(value, str)
+        and re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", value) is not None
     )
 
 
@@ -290,6 +302,8 @@ def _validate_metric_values(
                         mismatches.append("surviving_variant_count")
                     if pmax * final_mass > SURVIVAL_TOLERANCE:
                         mismatches.append("surviving_variant_count")
+                elif surviving > expected_variant_count:
+                    mismatches.append("surviving_variant_count")
                 else:
                     if final_mass <= SURVIVAL_TOLERANCE:
                         mismatches.append("surviving_variant_count")
@@ -415,10 +429,24 @@ def evaluate_research_contract(
     ):
         profile_mismatches.append("schema_version")
 
+    allowed_dispositions = contract.get("allowed_dispositions")
+    if (
+        not isinstance(allowed_dispositions, list)
+        or not allowed_dispositions
+        or any(
+            not isinstance(item, str) or not item.strip()
+            for item in allowed_dispositions
+        )
+        or len(set(allowed_dispositions)) != len(allowed_dispositions)
+        or V0_MACHINE_DISPOSITION not in allowed_dispositions
+    ):
+        profile_mismatches.append("allowed_dispositions")
+
     declared_metrics = contract.get("declared_metrics")
     if (
         not isinstance(declared_metrics, list)
         or len(declared_metrics) != len(V0_DECLARED_METRICS)
+        or any(not isinstance(item, str) or not item for item in declared_metrics)
         or set(declared_metrics) != set(V0_DECLARED_METRICS)
     ):
         profile_mismatches.append("declared_metrics")
@@ -427,9 +455,22 @@ def evaluate_research_contract(
     if (
         not isinstance(required_controls, list)
         or len(required_controls) != len(V0_REQUIRED_CONTROLS)
+        or any(not isinstance(item, str) or not item for item in required_controls)
         or set(required_controls) != set(V0_REQUIRED_CONTROLS)
     ):
         profile_mismatches.append("required_controls")
+
+    receipt_profile = contract.get("receipt_contract")
+    if isinstance(receipt_profile, dict):
+        if receipt_profile.get("schema_version") != V0_RECEIPT_SCHEMA_VERSION:
+            profile_mismatches.append("receipt_contract.schema_version")
+        if (
+            receipt_profile.get("float_significant_digits")
+            != V0_FLOAT_SIGNIFICANT_DIGITS
+        ):
+            profile_mismatches.append(
+                "receipt_contract.float_significant_digits"
+            )
 
     witness_profile = contract.get("independent_witness")
     if not isinstance(witness_profile, dict):
@@ -453,6 +494,7 @@ def evaluate_research_contract(
 
     required = (
         "experiment_id",
+        "allowed_dispositions",
         "question",
         "hypothesis",
         "falsifiers",
@@ -467,10 +509,7 @@ def evaluate_research_contract(
     if missing:
         return _status("FAIL", "missing_contract_fields", missing=missing)
 
-    if (
-        not isinstance(source_commit, str)
-        or re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", source_commit) is None
-    ):
+    if not _valid_source_commit(source_commit):
         return _status("FAIL", "invalid_source_commit")
 
     metadata_mismatches = []
@@ -533,7 +572,9 @@ def evaluate_research_contract(
             mismatched=["survival_tolerance"],
         )
 
-    receipt_contract = contract.get("receipt_contract", {})
+    receipt_contract = contract.get("receipt_contract")
+    if not isinstance(receipt_contract, dict):
+        return _status("FAIL", "invalid_receipt_contract")
     expected_schema = receipt_contract.get("schema_version")
     expected_digits = receipt_contract.get("float_significant_digits")
     if (
@@ -1103,7 +1144,7 @@ def evaluate_research_contract(
     return {
         "contract_status": "PASS",
         "epistemic_state": "HYPOTHESIS",
-        "scientific_disposition": "UNKNOWN_WITHIN_CURRENT_CONTRACT",
+        "scientific_disposition": V0_MACHINE_DISPOSITION,
         "authority": "NONE",
         "source_commit": source_commit,
     }
@@ -1463,8 +1504,9 @@ def _source_expected_control_checks(
         or not isinstance(edges, list)
         or isinstance(variant_count, bool)
         or not isinstance(variant_count, int)
-        or variant_count <= 0
+        or variant_count != V0_VARIANT_COUNT
         or not _nonnegative_int(horizon)
+        or horizon != V0_HORIZON
         or not _finite_nonnegative_number(subcritical)
         or not _finite_nonnegative_number(supercritical)
         or float(subcritical) <= 0.0
@@ -1824,23 +1866,28 @@ def build_current_receipt(root: Path) -> dict:
             "invalid_run_receipt_type",
             mismatched=[f"{name}.receipt" for name in invalid_runs],
         )
-        valid_source_commits = {
+        valid_source_commits = [
             receipt.get("source_commit")
             for receipt in runs.values()
-            if isinstance(receipt, dict) and receipt.get("source_commit") is not None
-        }
+            if isinstance(receipt, dict)
+            and _valid_source_commit(receipt.get("source_commit"))
+        ]
+        unique_source_commits = set(valid_source_commits)
         source_commit = (
-            next(iter(valid_source_commits))
-            if len(valid_source_commits) == 1
+            next(iter(unique_source_commits))
+            if len(unique_source_commits) == 1
             else head
         )
     elif runs:
-        source_commits = {r.get("source_commit") for r in runs.values()}
-        if None in source_commits or len(source_commits) != 1:
+        source_commit_values = [r.get("source_commit") for r in runs.values()]
+        if (
+            any(not _valid_source_commit(value) for value in source_commit_values)
+            or len(set(source_commit_values)) != 1
+        ):
             payload = _status("FAIL", "mixed_or_missing_run_source_commits")
             source_commit = head
         else:
-            source_commit = next(iter(source_commits))
+            source_commit = source_commit_values[0]
             bindings = _expected_evidence_bindings(root, source_commit)
             payload = evaluate_research_contract(
                 contract,

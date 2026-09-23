@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
+    printf '%s\n' 'property-check: not inside a Git worktree' >&2
+    exit 2
+}
+cd "$ROOT"
+PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+python3 -m unittest \
+    tests.test_research_qa.ResearchQATests.test_contract_shape_property_sweep_fails_closed \
+    tests.test_research_qa.ResearchQATests.test_cross_layer_provenance_mutation_matrix_fails_closed \
+    tests.test_research_qa.ResearchQATests.test_survivor_count_property_sweep_fails_closed
+printf '%s\n' 'RESEARCH_PROPERTY_CHECK_PASS'

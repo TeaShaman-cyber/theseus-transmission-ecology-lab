@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from transmission_ecology.research_qa import (
     _source_currentness,
+    _source_expected_control_checks,
     build_current_receipt,
     evaluate_research_contract,
 )
@@ -19,6 +20,13 @@ COMMIT_B = "b" * 40
 
 BASE_CONTRACT = {
     "schema_version": 1,
+    "allowed_dispositions": [
+        "FOUND_USEFUL_STRUCTURE",
+        "NO_SIGNAL",
+        "REFINE",
+        "REJECT",
+        "UNKNOWN_WITHIN_CURRENT_CONTRACT",
+    ],
     "experiment_id": "deterministic-v0",
     "question": "Which declared invariants survive substrate change?",
     "hypothesis": "Selected operator-level invariants remain comparable across substrates.",
@@ -484,6 +492,10 @@ class ResearchQATests(unittest.TestCase):
         mutations.append(("schema_version", contract))
 
         contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["allowed_dispositions"].remove("UNKNOWN_WITHIN_CURRENT_CONTRACT")
+        mutations.append(("allowed_dispositions", contract))
+
+        contract = json.loads(json.dumps(BASE_CONTRACT))
         contract["declared_metrics"].remove("perturbation_recovery_ratio")
         mutations.append(("declared_metrics", contract))
 
@@ -512,6 +524,197 @@ class ResearchQATests(unittest.TestCase):
                 self.assertEqual(out["contract_status"], "FAIL", out)
                 self.assertEqual(out["reason"], "invalid_v0_contract_profile", out)
                 self.assertIn(expected_field, out["mismatched"], out)
+
+    def test_contract_profile_lists_reject_non_string_entries_without_crashing(self):
+        mutations = []
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["allowed_dispositions"][0] = []
+        mutations.append(("allowed_dispositions", contract))
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["declared_metrics"][0] = []
+        mutations.append(("declared_metrics", contract))
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["required_controls"][0] = {}
+        mutations.append(("required_controls", contract))
+
+        for expected_field, contract in mutations:
+            with self.subTest(expected_field=expected_field):
+                out = evaluate_research_contract(
+                    contract,
+                    valid_runs(),
+                    valid_control_receipt(),
+                    valid_witness(),
+                    source_commit=COMMIT_A,
+                    evidence_bindings=BASE_BINDINGS,
+                )
+                self.assertEqual(out["contract_status"], "FAIL", out)
+                self.assertEqual(out["reason"], "invalid_v0_contract_profile", out)
+                self.assertIn(expected_field, out["mismatched"], out)
+
+    def test_non_object_receipt_contract_fails_closed(self):
+        for bad_value in (True, 1, ["schema_version"]):
+            with self.subTest(bad_value=bad_value):
+                contract = json.loads(json.dumps(BASE_CONTRACT))
+                contract["receipt_contract"] = bad_value
+                out = evaluate_research_contract(
+                    contract,
+                    valid_runs(),
+                    valid_control_receipt(),
+                    valid_witness(),
+                    source_commit=COMMIT_A,
+                    evidence_bindings=BASE_BINDINGS,
+                )
+                self.assertEqual(out["contract_status"], "FAIL", out)
+                self.assertEqual(out["reason"], "invalid_receipt_contract", out)
+
+    def test_unbounded_float_precision_fails_before_formatting(self):
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["receipt_contract"]["float_significant_digits"] = 10 ** 100
+        runs = valid_runs()
+        for receipt in runs.values():
+            receipt["numeric_policy"]["float_significant_digits"] = 10 ** 100
+        control = valid_control_receipt()
+        control["numeric_policy"]["float_significant_digits"] = 10 ** 100
+        out = evaluate_research_contract(
+            contract,
+            runs,
+            control,
+            valid_witness(),
+            source_commit=COMMIT_A,
+            evidence_bindings=BASE_BINDINGS,
+        )
+        self.assertEqual(out["contract_status"], "FAIL", out)
+        self.assertEqual(out["reason"], "invalid_v0_contract_profile", out)
+        self.assertIn(
+            "receipt_contract.float_significant_digits",
+            out["mismatched"],
+            out,
+        )
+
+    def test_source_control_dimension_is_bounded_before_allocation(self):
+        graph = {
+            "nodes": ["n1"],
+            "edges": [{"source": "n1", "target": "n1", "weight": 1.0}],
+        }
+        controls = {
+            "variant_count": 10 ** 100,
+            "horizon": 1,
+            "subcritical_target_radius": 0.8,
+            "supercritical_target_radius": 1.2,
+        }
+        self.assertIsNone(_source_expected_control_checks(graph, controls))
+
+    def test_source_control_horizon_is_bounded_before_simulation(self):
+        graph = {
+            "nodes": ["n1"],
+            "edges": [{"source": "n1", "target": "n1", "weight": 1.0}],
+        }
+        controls = {
+            "variant_count": 2,
+            "horizon": 10 ** 100,
+            "subcritical_target_radius": 0.8,
+            "supercritical_target_radius": 1.2,
+        }
+        self.assertIsNone(_source_expected_control_checks(graph, controls))
+
+    def test_contract_shape_property_sweep_fails_closed(self):
+        bad_json_scalars = (None, True, 0, 1.5, "", [], {})
+        for field in (
+            "allowed_dispositions",
+            "declared_metrics",
+            "required_controls",
+        ):
+            for bad_value in bad_json_scalars:
+                with self.subTest(field=field, bad_value=bad_value):
+                    contract = json.loads(json.dumps(BASE_CONTRACT))
+                    contract[field][0] = bad_value
+                    out = evaluate_research_contract(
+                        contract,
+                        valid_runs(),
+                        valid_control_receipt(),
+                        valid_witness(),
+                        source_commit=COMMIT_A,
+                        evidence_bindings=BASE_BINDINGS,
+                    )
+                    self.assertNotEqual(out["contract_status"], "PASS", out)
+
+        for bad_value in (True, 1, 1.5, "receipt", [], ["schema_version"]):
+            with self.subTest(field="receipt_contract", bad_value=bad_value):
+                contract = json.loads(json.dumps(BASE_CONTRACT))
+                contract["receipt_contract"] = bad_value
+                out = evaluate_research_contract(
+                    contract,
+                    valid_runs(),
+                    valid_control_receipt(),
+                    valid_witness(),
+                    source_commit=COMMIT_A,
+                    evidence_bindings=BASE_BINDINGS,
+                )
+                self.assertNotEqual(out["contract_status"], "PASS", out)
+
+    def test_cross_layer_provenance_mutation_matrix_fails_closed(self):
+        cases = []
+
+        runs = valid_runs()
+        runs["virus"]["contract_sha256"] = "wrong-contract"
+        cases.append(("run.contract_sha256", runs, valid_control_receipt(), valid_witness()))
+
+        runs = valid_runs()
+        runs["virus"]["graph_sha256"] = "wrong-graph"
+        cases.append(("run.graph_sha256", runs, valid_control_receipt(), valid_witness()))
+
+        runs = valid_runs()
+        runs["virus"]["parameters_sha256"] = "wrong-parameters"
+        cases.append(("run.parameters_sha256", runs, valid_control_receipt(), valid_witness()))
+
+        control = valid_control_receipt()
+        control["graph_sha256"] = "wrong-graph"
+        cases.append(("control.graph_sha256", valid_runs(), control, valid_witness()))
+
+        control = valid_control_receipt()
+        control["parameters_sha256"] = "wrong-parameters"
+        cases.append(("control.parameters_sha256", valid_runs(), control, valid_witness()))
+
+        witness = valid_witness()
+        witness["recipe_sha256"] = "wrong-recipe"
+        cases.append(("witness.recipe_sha256", valid_runs(), valid_control_receipt(), witness))
+
+        witness = valid_witness()
+        witness["adapter_sha256"] = "wrong-adapter"
+        cases.append(("witness.adapter_sha256", valid_runs(), valid_control_receipt(), witness))
+
+        witness = valid_witness()
+        witness["inputs"]["graph_sha256"] = "wrong-graph"
+        cases.append(("witness.inputs.graph_sha256", valid_runs(), valid_control_receipt(), witness))
+
+        witness = valid_witness()
+        witness["inputs"]["controls_sha256"] = "wrong-controls"
+        cases.append(("witness.inputs.controls_sha256", valid_runs(), valid_control_receipt(), witness))
+
+        for label, runs, control, witness in cases:
+            with self.subTest(label=label):
+                out = evaluate_research_contract(
+                    BASE_CONTRACT,
+                    runs,
+                    control,
+                    witness,
+                    source_commit=COMMIT_A,
+                    evidence_bindings=BASE_BINDINGS,
+                )
+                self.assertNotEqual(out["contract_status"], "PASS", out)
+
+    def test_survivor_count_property_sweep_fails_closed(self):
+        for bad_value in (3, 999, 10 ** 20, 10 ** 100, 10 ** 400):
+            with self.subTest(bad_value=str(bad_value)[:32]):
+                runs = valid_runs()
+                runs["virus"]["metrics"]["surviving_variant_count"] = bad_value
+                out = evaluate(runs=runs)
+                self.assertEqual(out["contract_status"], "FAIL", out)
+                self.assertIn(
+                    "virus.metrics.surviving_variant_count",
+                    out["mismatched"],
+                    out,
+                )
 
     def test_nonfinite_contract_metadata_fails_closed(self):
         contract = json.loads(json.dumps(BASE_CONTRACT))
@@ -674,6 +877,14 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["contract_status"], "FAIL")
         self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
         self.assertIn("virus.metrics.surviving_variant_count", out["mismatched"])
+
+    def test_extreme_survivor_count_fails_closed_without_float_overflow(self):
+        runs = valid_runs()
+        runs["virus"]["metrics"]["surviving_variant_count"] = 10 ** 400
+        out = evaluate(runs=runs)
+        self.assertEqual(out["contract_status"], "FAIL", out)
+        self.assertEqual(out["reason"], "run_receipt_binding_mismatch", out)
+        self.assertIn("virus.metrics.surviving_variant_count", out["mismatched"], out)
 
     def test_extinction_time_must_match_mass_trace(self):
         runs = valid_runs()
@@ -1186,6 +1397,32 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["contract_status"], "FAIL")
         self.assertEqual(out["reason"], "invalid_run_receipt_type")
         self.assertIn("virus.receipt", out["mismatched"])
+
+    def test_build_current_receipt_nonhashable_source_commit_fails_closed(self):
+        original = __import__(
+            "transmission_ecology.research_qa", fromlist=["_maybe_load"]
+        )._maybe_load
+
+        def malformed_virus_commit(path):
+            receipt = original(path)
+            if path.name == "v0-virus.json" and isinstance(receipt, dict):
+                receipt = json.loads(json.dumps(receipt))
+                receipt["source_commit"] = []
+            return receipt
+
+        with (
+            patch(
+                "transmission_ecology.research_qa._maybe_load",
+                side_effect=malformed_virus_commit,
+            ),
+            patch(
+                "transmission_ecology.research_qa._source_currentness",
+                return_value=("BOUND_UNCHANGED_SURFACE", None),
+            ),
+        ):
+            out = build_current_receipt(ROOT)
+        self.assertEqual(out["contract_status"], "FAIL", out)
+        self.assertEqual(out["reason"], "mixed_or_missing_run_source_commits", out)
 
     def test_stored_research_receipt_binds_current_evidence_content(self):
         receipt_path = ROOT / "receipts" / "research-qa" / "v0.json"
