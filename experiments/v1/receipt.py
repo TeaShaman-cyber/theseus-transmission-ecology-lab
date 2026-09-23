@@ -151,6 +151,13 @@ def _validated_receipt_core(receipt: dict):
         expected = two_stage_step(receipt["input_state"], V, W_source, W_target)
     except (TypeError, ValueError):
         return None
+    declared_variant_count = receipt.get("variant_count")
+    if (
+        isinstance(declared_variant_count, bool)
+        or not isinstance(declared_variant_count, int)
+        or declared_variant_count != V.shape[0]
+    ):
+        return None
     if receipt.get("claimed_stages") != claimed_stages(V, W_source, W_target):
         return None
     if not _same_vector(receipt.get("next_state"), expected["next_state"]):
@@ -174,7 +181,7 @@ def _matched_control(test: dict, control: dict, stage: str) -> bool:
     if control.get("intervention") != f"identity:{stage}":
         return False
     same_fields = (
-        "experiment_id", "fixture_id", "source_revision", "input_state",
+        "experiment_id", "case_id", "fixture_id", "source_revision", "input_state",
         "variant_transition", "graph_binding", "transmission_scale", "node_count",
         "variant_count", "horizon", "step", "numeric_policy",
     )

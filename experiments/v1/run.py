@@ -24,10 +24,18 @@ def _git_head(root: Path) -> str:
 
 
 def _surface_dirty(root: Path) -> bool:
+    # The runner imports from both repository root and src. Include every local
+    # Python import surface plus the explicit fixture/runner/docs contract, so
+    # untracked shadow modules (for example numpy.py or sitecustomize.py) cannot
+    # influence a durable receipt without being bound to source revision.
     result = subprocess.run(
         [
             "git", "status", "--porcelain", "--untracked-files=all", "--",
-            "experiments/v1", "tools/run-v1", "docs/v1-run.md",
+            ":(glob)**/*.py",
+            "pyproject.toml",
+            "experiments/v1/canonical-fixture.json",
+            "tools/run-v1",
+            "docs/v1-run.md",
         ],
         cwd=root,
         text=True,

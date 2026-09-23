@@ -22,6 +22,26 @@ class V1RunnerTests(unittest.TestCase):
                 set(case["receipt"]["claimed_stages"]),
             )
 
+
+    def test_durable_write_refuses_untracked_python_shadow_module(self):
+        shadow = ROOT / "sitecustomize.py"
+        self.assertFalse(shadow.exists())
+        shadow.write_text("SHADOW = True\n", encoding="utf-8")
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                out = Path(tmp) / "receipt.json"
+                result = subprocess.run(
+                    [str(ROOT / "tools" / "run-v1"), "--output", str(out)],
+                    cwd=ROOT,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("dirty v1 execution surface", result.stderr)
+        finally:
+            shadow.unlink(missing_ok=True)
+
     def test_cli_stdout_is_deterministic_json(self):
         result = subprocess.run(
             [str(ROOT / "tools" / "run-v1")],

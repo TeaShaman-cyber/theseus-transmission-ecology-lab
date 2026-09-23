@@ -68,6 +68,30 @@ class V1ReceiptTests(unittest.TestCase):
         self.assertEqual(result["stage_attribution"], "FAIL", result)
         self.assertEqual(result["reason"], "invalid_receipt")
 
+    def test_declared_variant_count_mismatch_is_fail(self):
+        receipt = self.receipt(self.W, self.W)
+        receipt["variant_count"] = 3
+        controls = {
+            PRE: build_identity_control(self.receipt(self.W, self.W), PRE),
+            POST: build_identity_control(self.receipt(self.W, self.W), POST),
+        }
+        for control in controls.values():
+            control["variant_count"] = 3
+        result = evaluate_stage_attribution(receipt, controls)
+        self.assertEqual(result["stage_attribution"], "FAIL", result)
+        self.assertEqual(result["reason"], "invalid_receipt", result)
+
+    def test_identity_control_from_other_case_is_fail(self):
+        receipt = self.receipt(self.W, self.W)
+        control = build_identity_control(receipt, PRE)
+        control["case_id"] = "different-case"
+        result = evaluate_stage_attribution(
+            receipt,
+            {PRE: control, POST: build_identity_control(receipt, POST)},
+        )
+        self.assertEqual(result["stage_attribution"], "FAIL", result)
+        self.assertEqual(result["reason"], f"control_mismatch:{PRE}", result)
+
     def test_final_state_only_cannot_pass(self):
         receipt = self.receipt(self.W, self.W)
         for field in ("source_ready", "adapted", "persistent"):
