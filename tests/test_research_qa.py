@@ -601,6 +601,57 @@ class ResearchQATests(unittest.TestCase):
                 )
                 self.assertNotEqual(out["contract_status"], "PASS", out)
 
+    def test_cross_layer_provenance_mutation_matrix_fails_closed(self):
+        cases = []
+
+        runs = valid_runs()
+        runs["virus"]["contract_sha256"] = "wrong-contract"
+        cases.append(("run.contract_sha256", runs, valid_control_receipt(), valid_witness()))
+
+        runs = valid_runs()
+        runs["virus"]["graph_sha256"] = "wrong-graph"
+        cases.append(("run.graph_sha256", runs, valid_control_receipt(), valid_witness()))
+
+        runs = valid_runs()
+        runs["virus"]["parameters_sha256"] = "wrong-parameters"
+        cases.append(("run.parameters_sha256", runs, valid_control_receipt(), valid_witness()))
+
+        control = valid_control_receipt()
+        control["graph_sha256"] = "wrong-graph"
+        cases.append(("control.graph_sha256", valid_runs(), control, valid_witness()))
+
+        control = valid_control_receipt()
+        control["parameters_sha256"] = "wrong-parameters"
+        cases.append(("control.parameters_sha256", valid_runs(), control, valid_witness()))
+
+        witness = valid_witness()
+        witness["recipe_sha256"] = "wrong-recipe"
+        cases.append(("witness.recipe_sha256", valid_runs(), valid_control_receipt(), witness))
+
+        witness = valid_witness()
+        witness["adapter_sha256"] = "wrong-adapter"
+        cases.append(("witness.adapter_sha256", valid_runs(), valid_control_receipt(), witness))
+
+        witness = valid_witness()
+        witness["inputs"]["graph_sha256"] = "wrong-graph"
+        cases.append(("witness.inputs.graph_sha256", valid_runs(), valid_control_receipt(), witness))
+
+        witness = valid_witness()
+        witness["inputs"]["controls_sha256"] = "wrong-controls"
+        cases.append(("witness.inputs.controls_sha256", valid_runs(), valid_control_receipt(), witness))
+
+        for label, runs, control, witness in cases:
+            with self.subTest(label=label):
+                out = evaluate_research_contract(
+                    BASE_CONTRACT,
+                    runs,
+                    control,
+                    witness,
+                    source_commit=COMMIT_A,
+                    evidence_bindings=BASE_BINDINGS,
+                )
+                self.assertNotEqual(out["contract_status"], "PASS", out)
+
     def test_survivor_count_property_sweep_fails_closed(self):
         for bad_value in (3, 999, 10 ** 20, 10 ** 100, 10 ** 400):
             with self.subTest(bad_value=str(bad_value)[:32]):
