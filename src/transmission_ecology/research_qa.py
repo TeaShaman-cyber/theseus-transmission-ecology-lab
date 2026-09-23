@@ -18,6 +18,33 @@ from transmission_ecology.provenance import (
 )
 
 REQUIRED_RUNS = ("virus", "meme", "agent")
+V0_CONTRACT_SCHEMA_VERSION = 1
+V0_DECLARED_METRICS = (
+    "spectral_radius",
+    "cycle_rank_beta1",
+    "total_mass_by_step",
+    "variant_shannon_entropy",
+    "surviving_variant_count",
+    "dominant_variant_share",
+    "time_to_extinction_or_horizon",
+    "perturbation_recovery_ratio",
+)
+V0_REQUIRED_CONTROLS = ("subcritical", "supercritical", "topology_only")
+V0_REQUIRED_WITNESS_CHECKS = frozenset(
+    {
+        "vertex_count",
+        "edge_count",
+        "weak_component_count",
+        "cycle_rank_beta1",
+        "incidence_rank",
+        "incidence_nullity",
+        "hodge1_nullity",
+        "subcritical_spectral_radius",
+        "supercritical_spectral_radius",
+        "subcritical_below_one",
+        "supercritical_above_one",
+    }
+)
 RESEARCH_EVIDENCE_PATHS = (
     "receipts/reference",
     "receipts/independent/wolfram-v0.json",
@@ -296,6 +323,52 @@ def evaluate_research_contract(
     source_commit,
     evidence_bindings,
 ):
+    profile_mismatches = []
+    if not isinstance(contract, dict):
+        return _status(
+            "FAIL",
+            "invalid_v0_contract_profile",
+            mismatched=["contract"],
+        )
+    if contract.get("schema_version") != V0_CONTRACT_SCHEMA_VERSION:
+        profile_mismatches.append("schema_version")
+
+    declared_metrics = contract.get("declared_metrics")
+    if (
+        not isinstance(declared_metrics, list)
+        or len(declared_metrics) != len(V0_DECLARED_METRICS)
+        or set(declared_metrics) != set(V0_DECLARED_METRICS)
+    ):
+        profile_mismatches.append("declared_metrics")
+
+    required_controls = contract.get("required_controls")
+    if (
+        not isinstance(required_controls, list)
+        or len(required_controls) != len(V0_REQUIRED_CONTROLS)
+        or set(required_controls) != set(V0_REQUIRED_CONTROLS)
+    ):
+        profile_mismatches.append("required_controls")
+
+    witness_profile = contract.get("independent_witness")
+    if not isinstance(witness_profile, dict):
+        profile_mismatches.append("independent_witness")
+    else:
+        if witness_profile.get("required") is not True:
+            profile_mismatches.append("independent_witness.required")
+        witness_checks = witness_profile.get("required_checks")
+        if (
+            not isinstance(witness_checks, dict)
+            or set(witness_checks) != V0_REQUIRED_WITNESS_CHECKS
+        ):
+            profile_mismatches.append("independent_witness.required_checks")
+
+    if profile_mismatches:
+        return _status(
+            "FAIL",
+            "invalid_v0_contract_profile",
+            mismatched=sorted(set(profile_mismatches)),
+        )
+
     required = (
         "experiment_id",
         "question",

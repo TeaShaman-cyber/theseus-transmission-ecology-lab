@@ -47,8 +47,15 @@ BASE_CONTRACT = {
             "controls_sha256": "controls-ok",
         },
         "required_checks": {
+            "vertex_count": 4,
+            "edge_count": 5,
+            "weak_component_count": 1,
             "cycle_rank_beta1": 2,
+            "incidence_rank": 3,
+            "incidence_nullity": 2,
             "hodge1_nullity": 2,
+            "subcritical_spectral_radius": 0.8,
+            "supercritical_spectral_radius": 1.2,
             "subcritical_below_one": True,
             "supercritical_above_one": True,
         },
@@ -215,13 +222,25 @@ def valid_witness(commit: str = COMMIT_A):
             "controls_sha256": "controls-ok",
         },
         "checks": {
+            "vertex_count": 4,
+            "edge_count": 5,
+            "weak_component_count": 1,
             "cycle_rank_beta1": 2,
+            "incidence_rank": 3,
+            "incidence_nullity": 2,
             "hodge1_nullity": 2,
+            "subcritical_spectral_radius": 0.8,
+            "supercritical_spectral_radius": 1.2,
             "subcritical_below_one": True,
             "supercritical_above_one": True,
         },
         "observed": {
+            "vertex_count": 4,
+            "edge_count": 5,
+            "weak_component_count": 1,
             "cycle_rank_beta1": 2,
+            "incidence_rank": 3,
+            "incidence_nullity": 2,
             "hodge1_nullity": 2,
             "subcritical_spectral_radius": 0.8,
             "supercritical_spectral_radius": 1.2,
@@ -241,6 +260,43 @@ def evaluate(runs=None, control=None, witness=None, *, source_commit=COMMIT_A, b
 
 
 class ResearchQATests(unittest.TestCase):
+    def test_v0_contract_profile_cannot_silently_shrink(self):
+        mutations = []
+
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract.pop("schema_version")
+        mutations.append(("schema_version", contract))
+
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["declared_metrics"].remove("perturbation_recovery_ratio")
+        mutations.append(("declared_metrics", contract))
+
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["required_controls"].remove("topology_only")
+        mutations.append(("required_controls", contract))
+
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["independent_witness"].pop("required")
+        mutations.append(("independent_witness.required", contract))
+
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["independent_witness"]["required_checks"].pop("edge_count")
+        mutations.append(("independent_witness.required_checks", contract))
+
+        for expected_field, contract in mutations:
+            with self.subTest(expected_field=expected_field):
+                out = evaluate_research_contract(
+                    contract,
+                    valid_runs(),
+                    valid_control_receipt(),
+                    valid_witness(),
+                    source_commit=COMMIT_A,
+                    evidence_bindings=BASE_BINDINGS,
+                )
+                self.assertEqual(out["contract_status"], "FAIL", out)
+                self.assertEqual(out["reason"], "invalid_v0_contract_profile", out)
+                self.assertIn(expected_field, out["mismatched"], out)
+
     def test_nonfinite_contract_metadata_fails_closed(self):
         contract = json.loads(json.dumps(BASE_CONTRACT))
         contract["question"] = float("nan")
