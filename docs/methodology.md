@@ -151,3 +151,13 @@ ancestry and the source binding of evidence stored at that head. The strict sour
 Wolfram adapter was rerun from exact execution commit
 `4dc49886bc40b605f140643457103b7604ccc20a`; the witness returned `VERIFIED` and all required
 mathematical checks reproduced with authority `NONE`.
+
+### Promotion history constraint
+
+The durable research receipt binds evidence by content hash, so its descriptive `storage_head`
+may be rewritten or become unreachable after integration without invalidating byte-identical
+evidence. The execution `source_commit` remains an ancestry-based authority anchor in v0.
+Therefore PR #34 must be promoted with a merge commit while this contract is active; squash or
+rebase promotion is not supported by the current provenance model. Supporting history-rewriting
+promotion requires a separately reviewed content-addressed source bridge rather than silently
+weakening `source_commit` validation.

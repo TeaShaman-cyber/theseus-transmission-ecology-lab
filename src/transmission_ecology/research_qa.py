@@ -27,6 +27,14 @@ RESEARCH_QA_SURFACE_PATHS = (
     "tools/research/check",
 )
 
+DURABLE_RESEARCH_EVIDENCE_PATHS = (
+    "receipts/reference/v0-virus.json",
+    "receipts/reference/v0-meme.json",
+    "receipts/reference/v0-agent.json",
+    "receipts/reference/v0-controls.json",
+    "receipts/independent/wolfram-v0.json",
+)
+
 
 def _status(status: str, reason: str, **extra):
     payload = {"contract_status": status, "authority": "NONE", "reason": reason}
@@ -1291,6 +1299,17 @@ def _source_currentness(
     return "UNKNOWN", "surface_currentness_unavailable"
 
 
+def _evidence_snapshot(root: Path) -> dict[str, str] | None:
+    snapshot: dict[str, str] = {}
+    for relpath in DURABLE_RESEARCH_EVIDENCE_PATHS:
+        path = root / relpath
+        try:
+            snapshot[relpath] = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            return None
+    return snapshot
+
+
 def build_current_receipt(root: Path) -> dict:
     contract = _load_json(root / "experiments" / "v0" / "contract.json")
     runs = {}
@@ -1351,23 +1370,19 @@ def build_current_receipt(root: Path) -> dict:
             "UNKNOWN", currentness_reason or "source_currentness_unknown"
         )
 
+    evidence_snapshot = _evidence_snapshot(root)
+    if evidence_snapshot is None:
+        payload = _status("UNKNOWN", "evidence_snapshot_unavailable")
+
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "experiment_id": contract.get("experiment_id"),
         "source_commit": source_commit,
         "storage_head": head,
+        "evidence_snapshot": evidence_snapshot,
         "source_currentness": currentness,
         **payload,
     }
-
-
-DURABLE_RESEARCH_EVIDENCE_PATHS = (
-    "receipts/reference/v0-virus.json",
-    "receipts/reference/v0-meme.json",
-    "receipts/reference/v0-agent.json",
-    "receipts/reference/v0-controls.json",
-    "receipts/independent/wolfram-v0.json",
-)
 
 
 def verify_stored_receipt(root: Path, path: Path) -> dict:
@@ -1407,27 +1422,21 @@ def verify_stored_receipt(root: Path, path: Path) -> dict:
         or re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", storage_head) is None
     ):
         mismatched.append("storage_head")
-    else:
-        ancestor = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", storage_head, current_head],
-            cwd=root,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
+
+    stored_snapshot = stored.get("evidence_snapshot")
+    current_snapshot = _evidence_snapshot(root)
+    if (
+        not isinstance(stored_snapshot, dict)
+        or set(stored_snapshot) != set(DURABLE_RESEARCH_EVIDENCE_PATHS)
+        or any(
+            not isinstance(value, str)
+            or re.fullmatch(r"[0-9a-f]{64}", value) is None
+            for value in stored_snapshot.values()
         )
-        if ancestor.returncode != 0:
-            mismatched.append("storage_head")
-        elif not isinstance(source_commit, str):
-            mismatched.append("source_commit")
-        else:
-            for relpath in DURABLE_RESEARCH_EVIDENCE_PATHS:
-                evidence = _git_blob_json(root, storage_head, relpath)
-                if (
-                    evidence is None
-                    or evidence.get("source_commit") != source_commit
-                ):
-                    mismatched.append("storage_head")
-                    break
+        or current_snapshot is None
+        or stored_snapshot != current_snapshot
+    ):
+        mismatched.append("evidence_snapshot")
 
     mismatched = sorted(set(mismatched))
     if mismatched:

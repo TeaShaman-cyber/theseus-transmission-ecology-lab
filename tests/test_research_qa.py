@@ -1,3 +1,4 @@
+import hashlib
 import json
 import subprocess
 import tempfile
@@ -879,32 +880,74 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["contract_status"], "FAIL")
         self.assertEqual(out["reason"], "witness_commit_mismatch")
 
-    def test_stored_research_receipt_never_points_to_unbound_evidence(self):
+    def test_stored_research_receipt_binds_current_evidence_content(self):
         receipt_path = ROOT / "receipts" / "research-qa" / "v0.json"
         if not receipt_path.is_file():
             return
         qa = json.loads(receipt_path.read_text(encoding="utf-8"))
-        storage_head = qa["storage_head"]
         source_commit = qa["source_commit"]
-        for relpath in (
+        snapshot = qa["evidence_snapshot"]
+        expected_paths = (
             "receipts/reference/v0-virus.json",
             "receipts/reference/v0-meme.json",
             "receipts/reference/v0-agent.json",
             "receipts/reference/v0-controls.json",
             "receipts/independent/wolfram-v0.json",
-        ):
-            raw = subprocess.check_output(
-                ["git", "show", f"{storage_head}:{relpath}"],
-                cwd=ROOT,
-                text=True,
-                stderr=subprocess.DEVNULL,
-            )
-            evidence = json.loads(raw)
+        )
+        self.assertEqual(set(snapshot), set(expected_paths))
+        for relpath in expected_paths:
+            path = ROOT / relpath
+            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), snapshot[relpath])
+            evidence = json.loads(path.read_text(encoding="utf-8"))
             self.assertEqual(
                 evidence["source_commit"],
                 source_commit,
-                f"{relpath} at storage_head is not bound to the claimed source",
+                f"{relpath} is not bound to the claimed source",
             )
+
+    def test_verify_stored_receipt_survives_squash_when_content_matches(self):
+        check = ROOT / "tools" / "research" / "check"
+        durable = build_current_receipt(ROOT)
+        durable["storage_head"] = "f" * 40
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "v0.json"
+            path.write_text(
+                json.dumps(durable, sort_keys=True, separators=(",", ":")) + "\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [str(check), "--verify-stored", str(path)],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["verification_status"], "PASS")
+
+    def test_verify_stored_receipt_rejects_snapshot_tampering(self):
+        check = ROOT / "tools" / "research" / "check"
+        durable = build_current_receipt(ROOT)
+        first = sorted(durable["evidence_snapshot"])[0]
+        durable["evidence_snapshot"][first] = "0" * 64
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "v0.json"
+            path.write_text(
+                json.dumps(durable, sort_keys=True, separators=(",", ":")) + "\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [str(check), "--verify-stored", str(path)],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["verification_status"], "FAIL")
+        self.assertIn("evidence_snapshot", payload["mismatched"])
 
     def test_verify_stored_receipt_accepts_current_durable_receipt(self):
         check = ROOT / "tools" / "research" / "check"
