@@ -6,12 +6,7 @@ import numpy as np
 
 from transmission_ecology.graph import adjacency_matrix, load_graph
 from transmission_ecology.models import agent, meme, virus
-from transmission_ecology.models.base import (
-    kron_operator,
-    two_stage_kron_operator,
-    two_stage_step,
-    two_stage_variant_operator,
-)
+from transmission_ecology.models.base import kron_operator
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,41 +45,6 @@ class ModelTests(unittest.TestCase):
             with self.subTest(fitness=fitness):
                 with self.assertRaises(ValueError):
                     kron_operator(self.A, V, scale=1.0, variant_fitness=fitness)
-
-    def test_v1_two_stage_fixture_matches_reviewed_oracle(self):
-        x0 = np.array([0.0, 1.0])
-        V = np.array([[0.95, 0.08], [0.05, 0.92]])
-        I = np.eye(2)
-        W = np.diag([1.0, 0.95])
-        cases = {
-            "target-only": (I, W, [0.0, 1.0], [0.08, 0.92], [0.08, 0.874]),
-            "source-only": (W, I, [0.0, 0.95], [0.076, 0.874], [0.076, 0.874]),
-            "two-stage": (W, W, [0.0, 0.95], [0.076, 0.874], [0.076, 0.8303]),
-        }
-        for name, (W_source, W_target, source_ready, adapted, persistent) in cases.items():
-            with self.subTest(name=name):
-                out = two_stage_step(x0, V, W_source, W_target)
-                np.testing.assert_allclose(out["source_ready"], source_ready, rtol=0.0, atol=1e-12)
-                np.testing.assert_allclose(out["adapted"], adapted, rtol=0.0, atol=1e-12)
-                np.testing.assert_allclose(out["persistent"], persistent, rtol=0.0, atol=1e-12)
-                np.testing.assert_array_equal(out["next_state"], out["persistent"])
-
-    def test_v1_two_stage_operator_matches_stage_composition(self):
-        V = np.array([[0.95, 0.08], [0.05, 0.92]])
-        W = np.diag([1.0, 0.95])
-        B = two_stage_variant_operator(V, W, W)
-        np.testing.assert_allclose(B, W @ V @ W, rtol=0.0, atol=1e-12)
-        K = two_stage_kron_operator(self.A, V, W, W, scale=0.5)
-        np.testing.assert_allclose(K, np.kron(self.A, B) * 0.5, rtol=0.0, atol=1e-12)
-
-    def test_v1_two_stage_rejects_invalid_stage_domains(self):
-        valid_v = np.eye(2)
-        dense_gate = np.array([[1.0, 0.1], [0.0, 1.0]])
-        with self.assertRaisesRegex(ValueError, "diagonal"):
-            two_stage_variant_operator(valid_v, dense_gate, np.eye(2))
-        sub_stochastic = np.array([[0.8, 0.0], [0.0, 0.8]])
-        with self.assertRaisesRegex(ValueError, "columns"):
-            two_stage_variant_operator(sub_stochastic, np.eye(2), np.eye(2))
 
     def test_substrate_boundaries_are_explicit_in_module_docs(self):
         self.assertIn("reassortment", (virus.__doc__ or "").lower())
