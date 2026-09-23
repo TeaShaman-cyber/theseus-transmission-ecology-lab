@@ -566,6 +566,54 @@ class ResearchQATests(unittest.TestCase):
                 self.assertEqual(out["contract_status"], "FAIL", out)
                 self.assertEqual(out["reason"], "invalid_receipt_contract", out)
 
+    def test_contract_shape_property_sweep_fails_closed(self):
+        bad_json_scalars = (None, True, 0, 1.5, "", [], {})
+        for field in (
+            "allowed_dispositions",
+            "declared_metrics",
+            "required_controls",
+        ):
+            for bad_value in bad_json_scalars:
+                with self.subTest(field=field, bad_value=bad_value):
+                    contract = json.loads(json.dumps(BASE_CONTRACT))
+                    contract[field][0] = bad_value
+                    out = evaluate_research_contract(
+                        contract,
+                        valid_runs(),
+                        valid_control_receipt(),
+                        valid_witness(),
+                        source_commit=COMMIT_A,
+                        evidence_bindings=BASE_BINDINGS,
+                    )
+                    self.assertNotEqual(out["contract_status"], "PASS", out)
+
+        for bad_value in (True, 1, 1.5, "receipt", [], ["schema_version"]):
+            with self.subTest(field="receipt_contract", bad_value=bad_value):
+                contract = json.loads(json.dumps(BASE_CONTRACT))
+                contract["receipt_contract"] = bad_value
+                out = evaluate_research_contract(
+                    contract,
+                    valid_runs(),
+                    valid_control_receipt(),
+                    valid_witness(),
+                    source_commit=COMMIT_A,
+                    evidence_bindings=BASE_BINDINGS,
+                )
+                self.assertNotEqual(out["contract_status"], "PASS", out)
+
+    def test_survivor_count_property_sweep_fails_closed(self):
+        for bad_value in (3, 999, 10 ** 20, 10 ** 100, 10 ** 400):
+            with self.subTest(bad_value=str(bad_value)[:32]):
+                runs = valid_runs()
+                runs["virus"]["metrics"]["surviving_variant_count"] = bad_value
+                out = evaluate(runs=runs)
+                self.assertEqual(out["contract_status"], "FAIL", out)
+                self.assertIn(
+                    "virus.metrics.surviving_variant_count",
+                    out["mismatched"],
+                    out,
+                )
+
     def test_nonfinite_contract_metadata_fails_closed(self):
         contract = json.loads(json.dumps(BASE_CONTRACT))
         contract["question"] = float("nan")
