@@ -125,33 +125,43 @@ def _same_vector(left, right) -> bool:
     )
 
 
-def _valid_receipt_shape(receipt: dict) -> bool:
-    if not isinstance(receipt, dict):
-        return False
-    required = {
-        "schema_version", "experiment_id", "case_id", "fixture_id", "source_revision",
-        "scientific_authority", "input_state", "variant_transition", "source_gate",
-        "target_gate", "graph_binding", "transmission_scale", "node_count",
-        "variant_count", "horizon", "step", "numeric_policy", "claimed_stages",
-        "source_ready", "adapted", "persistent", "next_state",
-    }
-    if not required.issubset(receipt):
-        return False
+BASE_RECEIPT_FIELDS = {
+    "schema_version", "experiment_id", "case_id", "fixture_id", "source_revision",
+    "scientific_authority", "input_state", "variant_transition", "source_gate",
+    "target_gate", "graph_binding", "transmission_scale", "node_count",
+    "variant_count", "horizon", "step", "numeric_policy", "claimed_stages",
+    "next_state",
+}
+STAGE_WITNESS_FIELDS = ("source_ready", "adapted", "persistent")
+
+
+def _validated_receipt_core(receipt: dict):
+    if not isinstance(receipt, dict) or not BASE_RECEIPT_FIELDS.issubset(receipt):
+        return None
     if receipt.get("scientific_authority") != "NONE":
-        return False
+        return None
     try:
         V = validated_transition(receipt["variant_transition"])
         W_source = validated_gate(receipt["source_gate"], V.shape[0], "source_gate")
         W_target = validated_gate(receipt["target_gate"], V.shape[0], "target_gate")
         expected = two_stage_step(receipt["input_state"], V, W_source, W_target)
     except (TypeError, ValueError):
-        return False
+        return None
     if receipt.get("claimed_stages") != claimed_stages(V, W_source, W_target):
+        return None
+    if not _same_vector(receipt.get("next_state"), expected["next_state"]):
+        return None
+    return expected
+
+
+def _valid_receipt_shape(receipt: dict) -> bool:
+    expected = _validated_receipt_core(receipt)
+    if expected is None or any(name not in receipt for name in STAGE_WITNESS_FIELDS):
         return False
-    for name in ("source_ready", "adapted", "persistent", "next_state"):
-        if not _same_vector(receipt.get(name), expected[name]):
-            return False
-    return True
+    return all(
+        _same_vector(receipt.get(name), expected[name])
+        for name in STAGE_WITNESS_FIELDS
+    )
 
 
 def _matched_control(test: dict, control: dict, stage: str) -> bool:
@@ -178,7 +188,18 @@ def _matched_control(test: dict, control: dict, stage: str) -> bool:
 
 
 def evaluate_stage_attribution(receipt: dict, controls: dict | None) -> dict:
-    if not _valid_receipt_shape(receipt):
+    expected = _validated_receipt_core(receipt)
+    if expected is None:
+        return {"stage_attribution": "FAIL", "reason": "invalid_receipt"}
+    missing_witnesses = [name for name in STAGE_WITNESS_FIELDS if name not in receipt]
+    if missing_witnesses:
+        return {
+            "stage_attribution": "UNKNOWN",
+            "reason": "stage_witness_missing",
+            "missing": missing_witnesses,
+            "scientific_authority": "NONE",
+        }
+    if any(not _same_vector(receipt.get(name), expected[name]) for name in STAGE_WITNESS_FIELDS):
         return {"stage_attribution": "FAIL", "reason": "invalid_receipt"}
     stages = receipt["claimed_stages"]
     if not stages:

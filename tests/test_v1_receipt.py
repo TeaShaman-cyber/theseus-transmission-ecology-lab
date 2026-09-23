@@ -73,7 +73,8 @@ class V1ReceiptTests(unittest.TestCase):
         for field in ("source_ready", "adapted", "persistent"):
             receipt.pop(field)
         result = evaluate_stage_attribution(receipt, None)
-        self.assertEqual(result["stage_attribution"], "FAIL", result)
+        self.assertEqual(result["stage_attribution"], "UNKNOWN", result)
+        self.assertEqual(result["reason"], "stage_witness_missing", result)
 
     def test_observationally_identical_gate_is_unknown(self):
         source = np.diag([0.5, 1.0]).tolist()
