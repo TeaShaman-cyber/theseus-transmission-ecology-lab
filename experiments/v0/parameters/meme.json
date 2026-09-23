@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "variants": [
+    "m0",
+    "m1"
+  ],
+  "transmission_scale": 0.65,
+  "variant_transition": [
+    [
+      0.9,
+      0.15
+    ],
+    [
+      0.1,
+      0.85
+    ]
+  ],
+  "attention_retention": 1
+}

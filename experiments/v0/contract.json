@@ -1,0 +1,76 @@
+{
+  "allowed_dispositions": [
+    "FOUND_USEFUL_STRUCTURE",
+    "NO_SIGNAL",
+    "REFINE",
+    "REJECT",
+    "UNKNOWN_WITHIN_CURRENT_CONTRACT"
+  ],
+  "declared_metrics": [
+    "spectral_radius",
+    "cycle_rank_beta1",
+    "total_mass_by_step",
+    "variant_shannon_entropy",
+    "surviving_variant_count",
+    "dominant_variant_share",
+    "time_to_extinction_or_horizon",
+    "perturbation_recovery_ratio"
+  ],
+  "experiment_id": "deterministic-v0",
+  "falsifiers": [
+    "The shared operator family fails to reproduce qualitative threshold behavior across substrates.",
+    "Shared metrics add no explanatory value beyond substrate-specific baselines.",
+    "A common representation erases mechanisms strongly enough to make the comparison misleading.",
+    "Diversity or monoculture conclusions depend on one arbitrary metric choice.",
+    "Topology alone appears predictive after the topology-only negative control."
+  ],
+  "hypothesis": "Selected operator-level invariants remain comparable across substrates without implying microscopic mechanism identity.",
+  "independent_witness": {
+    "adapter_path": "experiments/v0/witness/wolfram_v0_adapter.py",
+    "expected_backend": "WolframLanguageEvaluator",
+    "expected_inputs": {
+      "controls_sha256": "74d85ae2ab15c594e317de25ede003db047bf29fbf37d8439463b180e20c3dd8",
+      "graph_sha256": "97b57eb5e2070a31370793e126f73585232c2d2211f8ea9823cfd29879d26e49"
+    },
+    "kind": "spectral_or_hodge",
+    "recipe_path": "experiments/v0/witness/wolfram-v0.wl",
+    "required": true,
+    "required_checks": {
+      "cycle_rank_beta1": 2,
+      "edge_count": 5,
+      "hodge1_nullity": 2,
+      "incidence_nullity": 2,
+      "incidence_rank": 3,
+      "subcritical_below_one": true,
+      "subcritical_spectral_radius": 0.8,
+      "supercritical_above_one": true,
+      "supercritical_spectral_radius": 1.2,
+      "vertex_count": 4,
+      "weak_component_count": 1
+    },
+    "witness_schema_version": 2
+  },
+  "limitations": [
+    "linear deterministic model only",
+    "no stochastic epidemic process",
+    "no influenza coinfection or reassortment",
+    "no repeated-exposure complex contagion",
+    "no multi-artifact agent composition",
+    "no endogenous graph rewiring",
+    "no real-world causal inference"
+  ],
+  "metric_semantics": {
+    "survival_tolerance": 1e-12
+  },
+  "question": "Which declared transmission-dynamics invariants remain useful when the substrate changes from virus to meme to AI-agent systems?",
+  "receipt_contract": {
+    "float_significant_digits": 12,
+    "schema_version": 3
+  },
+  "required_controls": [
+    "subcritical",
+    "supercritical",
+    "topology_only"
+  ],
+  "schema_version": 1
+}

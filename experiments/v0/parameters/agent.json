@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "variants": [
+    "a0",
+    "a1"
+  ],
+  "transmission_scale": 0.9,
+  "variant_transition": [
+    [
+      0.95,
+      0.08
+    ],
+    [
+      0.05,
+      0.92
+    ]
+  ],
+  "evaluator_weights": [
+    1,
+    0.95
+  ]
+}
