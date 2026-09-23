@@ -45,6 +45,22 @@ class V1ModelTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "columns"):
             two_stage_variant_operator(sub_stochastic, self.I, self.I)
 
+    def test_complex_inputs_fail_closed_before_float_cast(self):
+        complex_transition = np.array([[1.0 + 1.0j, 0.0], [0.0, 1.0]])
+        with self.assertRaisesRegex(ValueError, "real-valued"):
+            two_stage_variant_operator(complex_transition, self.I, self.I)
+
+        complex_gate = np.array([[1.0 + 1.0j, 0.0], [0.0, 1.0]])
+        with self.assertRaisesRegex(ValueError, "real-valued"):
+            two_stage_variant_operator(self.V, complex_gate, self.I)
+
+        with self.assertRaisesRegex(ValueError, "real-valued"):
+            two_stage_step(np.array([0.0, 1.0 + 1.0j]), self.V, self.I, self.I)
+
+        complex_adjacency = np.array([[0.0, 1.0 + 1.0j], [1.0, 0.0]])
+        with self.assertRaisesRegex(ValueError, "real-valued"):
+            two_stage_kron_operator(complex_adjacency, self.V, self.I, self.I, scale=1.0)
+
 
 if __name__ == "__main__":
     unittest.main()

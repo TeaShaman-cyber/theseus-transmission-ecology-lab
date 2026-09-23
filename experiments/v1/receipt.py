@@ -110,6 +110,10 @@ def build_identity_control(receipt: dict, stage: str) -> dict:
 
 def _same_vector(left, right) -> bool:
     try:
+        raw_a = np.asarray(left)
+        raw_b = np.asarray(right)
+        if np.iscomplexobj(raw_a) or np.iscomplexobj(raw_b):
+            return False
         a = np.asarray(left, dtype=float)
         b = np.asarray(right, dtype=float)
     except (TypeError, ValueError):
