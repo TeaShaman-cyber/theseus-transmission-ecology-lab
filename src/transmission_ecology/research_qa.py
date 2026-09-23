@@ -71,7 +71,10 @@ def _status(status: str, reason: str, **extra):
 
 def _validate_receipt_policy(receipt: dict, receipt_contract: dict) -> bool:
     schema = receipt.get("schema_version")
-    digits = receipt.get("numeric_policy", {}).get("float_significant_digits")
+    numeric_policy = receipt.get("numeric_policy")
+    if not isinstance(numeric_policy, dict):
+        return False
+    digits = numeric_policy.get("float_significant_digits")
     return (
         not isinstance(schema, bool)
         and isinstance(schema, int)
@@ -1043,11 +1046,7 @@ def evaluate_research_contract(
                     witness_mismatches.append(f"observed.{key}")
                     continue
                 observed_value = witness_observed.get(key)
-                if not (
-                    isinstance(observed_value, (int, float))
-                    and not isinstance(observed_value, bool)
-                    and math.isfinite(float(observed_value))
-                ):
+                if not _finite_nonnegative_number(observed_value):
                     witness_mismatches.append(f"observed.{key}")
                     continue
                 if not _same_typed_scalar(

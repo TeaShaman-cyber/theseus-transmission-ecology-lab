@@ -303,6 +303,24 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["contract_status"], "FAIL", out)
         self.assertIn("schema_version", out["mismatched"], out)
 
+    def test_non_object_numeric_policy_fails_closed(self):
+        for value in (None, 12, [], "twelve"):
+            with self.subTest(value=repr(value)):
+                runs = valid_runs()
+                runs["virus"]["numeric_policy"] = value
+                out = evaluate(runs=runs)
+                self.assertEqual(out["contract_status"], "FAIL", out)
+                self.assertEqual(out["reason"], "receipt_contract_mismatch", out)
+                self.assertIn("virus", out["mismatched"], out)
+
+    def test_extreme_witness_observation_fails_closed(self):
+        witness = valid_witness()
+        witness["observed"]["edge_count"] = 10 ** 400
+        out = evaluate(witness=witness)
+        self.assertEqual(out["contract_status"], "FAIL", out)
+        self.assertEqual(out["reason"], "witness_content_mismatch", out)
+        self.assertIn("observed.edge_count", out["mismatched"], out)
+
     def test_large_numeric_evidence_fails_closed_without_overflow(self):
         huge = 10 ** 400
         runs = valid_runs()
