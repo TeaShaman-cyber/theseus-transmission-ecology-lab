@@ -81,6 +81,32 @@ class V1ReceiptTests(unittest.TestCase):
         self.assertEqual(result["stage_attribution"], "FAIL", result)
         self.assertEqual(result["reason"], "invalid_receipt", result)
 
+    def test_declared_node_count_mismatch_is_fail(self):
+        receipt = self.receipt(self.W, self.W)
+        receipt["node_count"] = 2
+        controls = {
+            PRE: build_identity_control(self.receipt(self.W, self.W), PRE),
+            POST: build_identity_control(self.receipt(self.W, self.W), POST),
+        }
+        for control in controls.values():
+            control["node_count"] = 2
+        result = evaluate_stage_attribution(receipt, controls)
+        self.assertEqual(result["stage_attribution"], "FAIL", result)
+        self.assertEqual(result["reason"], "invalid_receipt", result)
+
+    def test_local_receipt_rejects_nonunit_scale(self):
+        with self.assertRaisesRegex(ValueError, "transmission_scale == 1.0"):
+            build_step_receipt(
+                case_id="scaled",
+                fixture_id="canonical-v1-a1",
+                source_revision="f26ba2558b0dd7eff50aad29e8e22c4468b1f0ab",
+                state=self.x0,
+                variant_transition=self.V,
+                source_gate=self.W,
+                target_gate=self.W,
+                transmission_scale=0.0,
+            )
+
     def test_identity_control_from_other_case_is_fail(self):
         receipt = self.receipt(self.W, self.W)
         control = build_identity_control(receipt, PRE)

@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from experiments.v1.run import build_canonical_receipt
+from experiments.v1.run import _display_output_path, build_canonical_receipt
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -41,6 +41,11 @@ class V1RunnerTests(unittest.TestCase):
             self.assertIn("dirty v1 execution surface", result.stderr)
         finally:
             shadow.unlink(missing_ok=True)
+
+    def test_absolute_output_outside_repo_reports_absolute_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "receipt.json"
+            self.assertEqual(_display_output_path(out, ROOT), str(out))
 
     def test_cli_stdout_is_deterministic_json(self):
         result = subprocess.run(

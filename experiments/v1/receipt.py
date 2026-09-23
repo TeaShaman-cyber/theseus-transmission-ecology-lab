@@ -52,6 +52,10 @@ def build_step_receipt(
     numeric_policy: str = "float64-atol-1e-12",
     intervention: str | None = None,
 ) -> dict:
+    if transmission_scale != 1.0:
+        raise ValueError("local step receipts require transmission_scale == 1.0")
+    if graph_binding != "local":
+        raise ValueError("local step receipts require graph_binding == 'local'")
     V = validated_transition(variant_transition)
     W_source = validated_gate(source_gate, V.shape[0], "source_gate")
     W_target = validated_gate(target_gate, V.shape[0], "target_gate")
@@ -152,10 +156,16 @@ def _validated_receipt_core(receipt: dict):
     except (TypeError, ValueError):
         return None
     declared_variant_count = receipt.get("variant_count")
+    declared_node_count = receipt.get("node_count")
     if (
         isinstance(declared_variant_count, bool)
         or not isinstance(declared_variant_count, int)
         or declared_variant_count != V.shape[0]
+        or isinstance(declared_node_count, bool)
+        or not isinstance(declared_node_count, int)
+        or declared_node_count != 1
+        or receipt.get("graph_binding") != "local"
+        or receipt.get("transmission_scale") != 1.0
     ):
         return None
     if receipt.get("claimed_stages") != claimed_stages(V, W_source, W_target):

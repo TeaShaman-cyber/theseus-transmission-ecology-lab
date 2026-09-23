@@ -45,6 +45,13 @@ def _surface_dirty(root: Path) -> bool:
     return bool(result.stdout.strip())
 
 
+def _display_output_path(output: Path, root: Path) -> str:
+    try:
+        return str(output.relative_to(root))
+    except ValueError:
+        return str(output)
+
+
 def _write_atomic(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
@@ -119,7 +126,7 @@ def main() -> int:
     else:
         output = args.output if args.output.is_absolute() else root / args.output
         _write_atomic(output, payload)
-        print(str(output.relative_to(root)))
+        print(_display_output_path(output, root))
     return 0
 
 
