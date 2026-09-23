@@ -88,13 +88,13 @@ Acceptance is not merely that totals differ. For the exercised `a1` lineage, the
 
 - `spectral_radius`: keep as a regime summary for the composed operator; not a stage locator.
 - `cycle_rank_beta1`: keep as a topology control.
-- `total_mass_by_step`: keep; primary transient witness for stage timing.
+- `total_mass_by_step`: keep as an end-of-complete-step outcome trajectory; **not** a stage locator. Stage timing is established only from the stage-local `source_ready`, `adapted`, and `persistent` witnesses (and totals derived from those witnesses when useful).
 - `variant_shannon_entropy`, `surviving_variant_count`, `dominant_variant_share`, `time_to_extinction_or_horizon`: keep as outcome/composition metrics.
 - `perturbation_recovery_ratio`: keep only when the perturbation stage is explicit.
 
 ## Minimal receipt contract
 
-A step receipt includes the relevant state plus `source_ready`, `adapted`, `persistent`, `next_state`, exact bindings for `V`, `W_source`, `W_target`, fixture and source revision, plus `stage_attribution`. Global receipts additionally bind `A`, `transmission_scale`, graph fixture, and node/variant dimensions.
+A step receipt includes the relevant state plus `source_ready`, `adapted`, `persistent`, `next_state`, exact bindings for `V`, `W_source`, `W_target`, fixture and source revision, plus `stage_attribution`. The stage-local total masses are deterministic derivations of those three intermediate states and may be recorded for convenience, but only the bound intermediate witnesses carry attribution authority. Global receipts additionally bind `A`, `transmission_scale`, graph fixture, and node/variant dimensions.
 
 For **stage-attribution verdicts**:
 
