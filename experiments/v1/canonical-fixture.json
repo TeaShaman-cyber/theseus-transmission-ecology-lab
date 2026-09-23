@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "fixture_id": "canonical-v1-a1",
+  "input_state": [0.0, 1.0],
+  "variant_transition": [[0.95, 0.08], [0.05, 0.92]],
+  "selection_gate": [[1.0, 0.0], [0.0, 0.95]],
+  "identity_gate": [[1.0, 0.0], [0.0, 1.0]],
+  "cases": ["target-only", "source-only", "two-stage"]
+}

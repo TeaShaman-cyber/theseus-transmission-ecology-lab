@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+ROOT=$(git rev-parse --show-toplevel)
+cd "$ROOT"
+PYTHONPATH="$ROOT/src:$ROOT${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+exec python3 -m experiments.v1.run "$@"
