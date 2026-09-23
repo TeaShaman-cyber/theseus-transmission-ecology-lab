@@ -492,6 +492,16 @@ def evaluate_research_contract(
     required_witness_checks = witness_contract.get("required_checks")
     if not isinstance(required_witness_checks, dict) or not required_witness_checks:
         return _status("FAIL", "invalid_independent_witness_contract")
+    source_expected_witness_checks = expected_witness.get("required_checks")
+    if (
+        not isinstance(source_expected_witness_checks, dict)
+        or required_witness_checks != source_expected_witness_checks
+    ):
+        return _status(
+            "FAIL",
+            "invalid_v0_contract_profile",
+            mismatched=["independent_witness.required_checks.values"],
+        )
     expected_cycle_rank_beta1 = required_witness_checks.get("cycle_rank_beta1")
     if expected_cycle_rank_beta1 is not None and not _nonnegative_int(
         expected_cycle_rank_beta1
@@ -1199,6 +1209,79 @@ def _source_expected_perturbation_ratio(
     return max(0.0, min(1.0, ratio))
 
 
+def _source_expected_witness_checks(
+    graph_data: dict, controls_data: dict
+) -> dict | None:
+    nodes = graph_data.get("nodes")
+    edges = graph_data.get("edges")
+    if (
+        not isinstance(nodes, list)
+        or not nodes
+        or any(not isinstance(node, str) or not node for node in nodes)
+        or len(set(nodes)) != len(nodes)
+        or not isinstance(edges, list)
+    ):
+        return None
+
+    node_set = set(nodes)
+    neighbors = {node: set() for node in nodes}
+    for edge in edges:
+        if not isinstance(edge, dict):
+            return None
+        source = edge.get("source")
+        target = edge.get("target")
+        if source not in node_set or target not in node_set:
+            return None
+        neighbors[source].add(target)
+        neighbors[target].add(source)
+
+    remaining = set(nodes)
+    weak_components = 0
+    while remaining:
+        weak_components += 1
+        start = min(remaining)
+        stack = [start]
+        remaining.remove(start)
+        while stack:
+            current = stack.pop()
+            for neighbor in sorted(neighbors[current], reverse=True):
+                if neighbor in remaining:
+                    remaining.remove(neighbor)
+                    stack.append(neighbor)
+
+    vertex_count = len(nodes)
+    edge_count = len(edges)
+    incidence_rank = vertex_count - weak_components
+    incidence_nullity = edge_count - incidence_rank
+    cycle_rank = edge_count - vertex_count + weak_components
+
+    subcritical = controls_data.get("subcritical_target_radius")
+    supercritical = controls_data.get("supercritical_target_radius")
+    if (
+        not _finite_nonnegative_number(subcritical)
+        or not _finite_nonnegative_number(supercritical)
+        or float(subcritical) <= 0.0
+        or float(supercritical) <= 0.0
+        or not float(subcritical) < 1.0
+        or not float(supercritical) > 1.0
+    ):
+        return None
+
+    return {
+        "vertex_count": vertex_count,
+        "edge_count": edge_count,
+        "weak_component_count": weak_components,
+        "cycle_rank_beta1": cycle_rank,
+        "incidence_rank": incidence_rank,
+        "incidence_nullity": incidence_nullity,
+        "hodge1_nullity": incidence_nullity,
+        "subcritical_spectral_radius": float(subcritical),
+        "supercritical_spectral_radius": float(supercritical),
+        "subcritical_below_one": True,
+        "supercritical_above_one": True,
+    }
+
+
 def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
     contract_sha256 = _git_blob_sha256(
         root, source_commit, "experiments/v0/contract.json"
@@ -1243,6 +1326,11 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
 
     witness_contract = contract_data.get("independent_witness")
     if not isinstance(witness_contract, dict):
+        return None
+    expected_witness_checks = _source_expected_witness_checks(
+        graph_data, controls_data
+    )
+    if expected_witness_checks is None:
         return None
     recipe_path = witness_contract.get("recipe_path")
     adapter_path = witness_contract.get("adapter_path")
@@ -1301,6 +1389,7 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
             "recipe_sha256": recipe_sha256,
             "adapter_path": adapter_path,
             "adapter_sha256": adapter_sha256,
+            "required_checks": expected_witness_checks,
         },
         "control": {
             "graph_sha256": graph_sha256,

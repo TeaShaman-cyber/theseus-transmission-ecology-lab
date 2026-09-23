@@ -104,6 +104,7 @@ BASE_BINDINGS = {
         "recipe_sha256": "recipe-ok",
         "adapter_path": "experiments/v0/witness/wolfram_v0_adapter.py",
         "adapter_sha256": "adapter-ok",
+        "required_checks": dict(BASE_CONTRACT["independent_witness"]["required_checks"]),
     },
     "control": {
         "graph_sha256": "graph-ok",
@@ -260,6 +261,35 @@ def evaluate(runs=None, control=None, witness=None, *, source_commit=COMMIT_A, b
 
 
 class ResearchQATests(unittest.TestCase):
+    def test_v0_witness_expectations_must_match_source_derived_semantics(self):
+        mutations = (
+            ("edge_count", 999),
+            ("subcritical_spectral_radius", 0.7),
+        )
+        for key, value in mutations:
+            with self.subTest(key=key):
+                contract = json.loads(json.dumps(BASE_CONTRACT))
+                contract["independent_witness"]["required_checks"][key] = value
+                witness = valid_witness()
+                witness["checks"][key] = value
+                if key in witness["observed"]:
+                    witness["observed"][key] = value
+                out = evaluate_research_contract(
+                    contract,
+                    valid_runs(),
+                    valid_control_receipt(),
+                    witness,
+                    source_commit=COMMIT_A,
+                    evidence_bindings=BASE_BINDINGS,
+                )
+                self.assertEqual(out["contract_status"], "FAIL", out)
+                self.assertEqual(out["reason"], "invalid_v0_contract_profile", out)
+                self.assertIn(
+                    "independent_witness.required_checks.values",
+                    out["mismatched"],
+                    out,
+                )
+
     def test_v0_contract_profile_cannot_silently_shrink(self):
         mutations = []
 
