@@ -332,6 +332,14 @@ class ResearchQATests(unittest.TestCase):
         out = evaluate(control=control)
         self.assertEqual(out["contract_status"], "FAIL", out)
 
+    def test_source_metric_rounding_accepts_only_canonical_receipt_value(self):
+        expected = 1.0376324719148955
+        from transmission_ecology.research_qa import _matches_rounded_numeric
+
+        self.assertTrue(_matches_rounded_numeric(1.03763247191, expected, 12))
+        self.assertFalse(_matches_rounded_numeric(1.03763247192, expected, 12))
+        self.assertFalse(_matches_rounded_numeric(1.03763247190, expected, 12))
+
     def test_source_replay_rejects_corrupted_declared_run_metrics(self):
         cases = []
         runs = valid_runs()

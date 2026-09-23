@@ -136,12 +136,7 @@ def _matches_rounded_numeric(observed, expected, digits: int) -> bool:
     observed_value = float(observed)
     expected_value = float(expected)
     expected_rounded = float(format(expected_value, f".{digits}g"))
-    interval = (
-        _significant_rounding_half_step(observed_value, digits)
-        + _significant_rounding_half_step(expected_rounded, digits)
-        + math.ulp(expected_rounded if expected_rounded != 0.0 else 1.0)
-    )
-    return abs(observed_value - expected_rounded) <= interval
+    return observed_value == expected_rounded
 
 
 def _source_metric_mismatches(
