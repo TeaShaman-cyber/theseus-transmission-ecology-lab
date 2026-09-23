@@ -44,6 +44,15 @@ This preserves v0 graph propagation and `transmission_scale`; only the variant f
 - `V`: local adaptation / transformation. Columns are source variants; rows are destination variants.
 - `W_target`: post-adaptation viability: verification, acceptance, retention, persistence, rejection.
 
+### Matrix domains
+
+The stage meanings are part of the contract, not inferred from any factorization that happens to reproduce the same composed operator.
+
+- `V` is the same transition family as deterministic v0: a non-empty square, finite, nonnegative **column-stochastic** matrix. With `n` variants, `V.shape == (n, n)`, and every column must sum to one under the v0 canonical tolerance (`rtol = 0`, `atol = 1e-12`). A sub-stochastic or otherwise mass-removing `V` is invalid rather than being reinterpreted as selection.
+- `W_source` and `W_target` are **diagonal weighting operators**, not arbitrary dense transforms. Each is `diag(w)` for a length-`n` vector of finite nonnegative weights. Off-diagonal mass is invalid because variant conversion belongs to `V`, not to a selection gate.
+- `V`, `W_source`, and `W_target` must share the same variant dimension and ordering. Identity controls use the exact `n x n` identity for the corresponding gate.
+- Global receipts must validate these local domains before constructing the Kronecker lift. A receipt with an invalid transition/gate domain is `FAIL`, not a different stage interpretation and not `UNKNOWN`.
+
 Identity limits are explicit controls:
 
 ```text
