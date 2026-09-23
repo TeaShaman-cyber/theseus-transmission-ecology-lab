@@ -39,7 +39,7 @@ both = I      -> V
 
 Observing only `K = W_target @ V @ W_source` does not uniquely identify the factorization. A final trajectory may establish composed dynamics but not where selection acted.
 
-A stage claim therefore requires stage-local witnesses. Missing stage witnesses force `stage_attribution = UNKNOWN`; matching only the final state cannot upgrade that result.
+A claim about **stage placement for an exercised lineage** requires stage-local witnesses. Missing stage witnesses force `stage_attribution = UNKNOWN`; matching only the final state cannot upgrade that result. The minimal one-hot fixture below is not a parameter-identification experiment and cannot identify unexercised columns of `V`, `W_source`, or `W_target`.
 
 ## First deterministic fixture
 
@@ -56,7 +56,7 @@ W  = diag(1.0, 0.95)
 | source-only | `W` | `I` | `[0, 0.95]` | `[0.076, 0.874]` | `[0.076, 0.874]` | 0.950 |
 | two-stage | `W` | `W` | `[0, 0.95]` | `[0.076, 0.874]` | `[0.076, 0.8303]` | 0.9063 |
 
-Acceptance is not merely that totals differ. The intermediate witnesses must identify **where** each difference was introduced.
+Acceptance is not merely that totals differ. For the exercised `a1` lineage, the intermediate witnesses must identify **where** each difference was introduced. This fixture makes no claim to recover arbitrary matrix parameters. Any later parameter-identification claim must add linearly independent initial states (at minimum both basis vectors for the two-variant fixture) and demonstrate identifiability separately.
 
 ## Metric carry-forward
 
@@ -92,7 +92,7 @@ It supports the existence of separately observable pre-transfer and post-adaptat
 
 ## Falsifiers and stopping rules
 
-The two-stage refinement is unsupported if no observed lineage can independently identify a source-side gate and a target-side persistence gate. A fixture also fails to identify stages if distinct parameterizations reproduce the same declared intermediate observations and final trajectory.
+The two-stage refinement is unsupported if no observed lineage can independently identify a source-side gate and a target-side persistence gate. The first fixture tests **stage-placement observability for one exercised lineage**, not uniqueness of the full factorization. If a later experiment claims parameter identification, it fails that stronger claim whenever distinct parameterizations reproduce all declared intermediate observations across the required linearly independent inputs.
 
 Do not add stochasticity, nonlinear gates, or multi-artifact composition until this deterministic stage-identification contract earns them through a concrete unresolved mechanism.
 
