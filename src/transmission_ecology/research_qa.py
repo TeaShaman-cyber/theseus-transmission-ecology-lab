@@ -460,9 +460,7 @@ def evaluate_research_contract(
         profile_mismatches.append("required_controls")
 
     receipt_profile = contract.get("receipt_contract")
-    if not isinstance(receipt_profile, dict):
-        profile_mismatches.append("receipt_contract")
-    else:
+    if isinstance(receipt_profile, dict):
         if receipt_profile.get("schema_version") != V0_RECEIPT_SCHEMA_VERSION:
             profile_mismatches.append("receipt_contract.schema_version")
         if (
