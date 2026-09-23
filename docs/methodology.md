@@ -141,3 +141,13 @@ now rejects duplicate keys at any depth as well as non-standard numeric constant
 repository parser and in the standalone Wolfram witness adapter. The adapter was rerun from exact
 execution commit `04c6a5e5e2d0e034a3227bffd3bcdba868361552`; the source-consuming witness was
 `VERIFIED` and all required mathematical checks reproduced with authority `NONE`.
+
+Twelfth reverification note: exact-head review found two remaining evidence-channel gaps. The
+standalone Wolfram adapter now applies the same duplicate-key and nonstandard-number rejection to
+backend output (including quoted nested JSON) that it already applied to source inputs. Hosted
+replay no longer overwrites the durable research receipt and treats regeneration as success; it now
+verifies the committed receipt semantically while separately checking the receipt's storage-head
+ancestry and the source binding of evidence stored at that head. The strict source-consuming
+Wolfram adapter was rerun from exact execution commit
+`4dc49886bc40b605f140643457103b7604ccc20a`; the witness returned `VERIFIED` and all required
+mathematical checks reproduced with authority `NONE`.
