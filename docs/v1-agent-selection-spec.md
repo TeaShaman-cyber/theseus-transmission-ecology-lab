@@ -8,20 +8,37 @@ Deterministic v0 implements evaluator pressure as post-adaptation target weighti
 
 ## Minimal model
 
-For column-vector state `x_t`:
+The three-stage product first defines the **variant-local** transformation for a column vector `u_t`:
 
 ```text
-x_source_ready = W_source @ x_t
-x_adapted      = V @ x_source_ready
-x_persistent   = W_target @ x_adapted
-x_{t+1}        = x_persistent
+u_source_ready = W_source @ u_t
+u_adapted      = V @ u_source_ready
+u_persistent   = W_target @ u_adapted
+u_{t+1}         = u_persistent
 ```
 
-Equivalently:
+Equivalently, the local variant operator is:
 
 ```text
-x_{t+1} = W_target @ V @ W_source @ x_t
+B_variant = W_target @ V @ W_source
 ```
+
+The experiment itself still evolves the existing node-by-variant global state. For graph adjacency `A`, transmission scale `s`, `N` graph nodes, and identity `I_N`, the v1 lift is:
+
+```text
+z_source_ready = (I_N ⊗ W_source) @ z_t
+z_adapted      = s * (A ⊗ V) @ z_source_ready
+z_persistent   = (I_N ⊗ W_target) @ z_adapted
+z_{t+1}        = z_persistent
+```
+
+so the complete global operator remains:
+
+```text
+K_global = s * (A ⊗ (W_target @ V @ W_source))
+```
+
+This preserves v0 graph propagation and `transmission_scale`; only the variant factor is refined. The two-variant fixture below is a local stage-placement oracle, not a replacement for the graph-level simulation.
 
 - `W_source`: pre-transfer success or exposure gate: ranking, visibility, permission to propagate, source reputation, pre-transfer review.
 - `V`: local adaptation / transformation. Columns are source variants; rows are destination variants.
@@ -68,13 +85,15 @@ Acceptance is not merely that totals differ. For the exercised `a1` lineage, the
 
 ## Minimal receipt contract
 
-A step receipt includes `x`, `source_ready`, `adapted`, `persistent`, `next_state`, exact bindings for `V`, `W_source`, `W_target`, fixture and source revision, plus `stage_attribution`.
+A step receipt includes the relevant state plus `source_ready`, `adapted`, `persistent`, `next_state`, exact bindings for `V`, `W_source`, `W_target`, fixture and source revision, plus `stage_attribution`. Global receipts additionally bind `A`, `transmission_scale`, graph fixture, and node/variant dimensions.
 
-- `PASS`: all required stage witnesses are present, bound and internally consistent.
-- `UNKNOWN`: stage attribution cannot be established, including final-state-only evidence.
+For **stage-attribution verdicts**:
+
+- `PASS`: all required witnesses are present, bound and internally consistent **and every claimed non-identity stage differs from its matched identity-control witness at canonical precision**.
+- `UNKNOWN`: stage attribution cannot be established, including final-state-only evidence, an extinct/zero state, or an exercised state on which a claimed gate is observationally identical to its identity control.
 - `FAIL`: contradictory state, shape mismatch, non-finite/negative values, binding mismatch, or omitted identity control.
 
-`UNKNOWN` must never become `PASS` only because the final state matches.
+A structurally valid receipt may therefore still have `stage_attribution = UNKNOWN`. `UNKNOWN` must never become `PASS` only because the final state matches.
 
 ## Real-lineage discriminator
 
