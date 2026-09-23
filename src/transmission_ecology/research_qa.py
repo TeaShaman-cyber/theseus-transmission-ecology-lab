@@ -22,6 +22,7 @@ V0_CONTRACT_SCHEMA_VERSION = 1
 V0_RECEIPT_SCHEMA_VERSION = 3
 V0_FLOAT_SIGNIFICANT_DIGITS = 12
 V0_VARIANT_COUNT = 2
+V0_HORIZON = 8
 V0_DECLARED_METRICS = (
     "spectral_radius",
     "cycle_rank_beta1",
@@ -1505,6 +1506,7 @@ def _source_expected_control_checks(
         or not isinstance(variant_count, int)
         or variant_count != V0_VARIANT_COUNT
         or not _nonnegative_int(horizon)
+        or horizon != V0_HORIZON
         or not _finite_nonnegative_number(subcritical)
         or not _finite_nonnegative_number(supercritical)
         or float(subcritical) <= 0.0

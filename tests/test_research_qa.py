@@ -604,6 +604,19 @@ class ResearchQATests(unittest.TestCase):
         }
         self.assertIsNone(_source_expected_control_checks(graph, controls))
 
+    def test_source_control_horizon_is_bounded_before_simulation(self):
+        graph = {
+            "nodes": ["n1"],
+            "edges": [{"source": "n1", "target": "n1", "weight": 1.0}],
+        }
+        controls = {
+            "variant_count": 2,
+            "horizon": 10 ** 100,
+            "subcritical_target_radius": 0.8,
+            "supercritical_target_radius": 1.2,
+        }
+        self.assertIsNone(_source_expected_control_checks(graph, controls))
+
     def test_contract_shape_property_sweep_fails_closed(self):
         bad_json_scalars = (None, True, 0, 1.5, "", [], {})
         for field in (
