@@ -906,6 +906,44 @@ class ResearchQATests(unittest.TestCase):
                 f"{relpath} at storage_head is not bound to the claimed source",
             )
 
+    def test_verify_stored_receipt_accepts_current_durable_receipt(self):
+        check = ROOT / "tools" / "research" / "check"
+        receipt = ROOT / "receipts" / "research-qa" / "v0.json"
+        result = subprocess.run(
+            [str(check), "--verify-stored", str(receipt)],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["verification_status"], "PASS")
+
+    def test_verify_stored_receipt_rejects_semantic_tampering(self):
+        check = ROOT / "tools" / "research" / "check"
+        durable = json.loads(
+            (ROOT / "receipts" / "research-qa" / "v0.json").read_text(encoding="utf-8")
+        )
+        durable["authority"] = "ROOT"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "v0.json"
+            path.write_text(
+                json.dumps(durable, sort_keys=True, separators=(",", ":")) + "\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [str(check), "--verify-stored", str(path)],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["verification_status"], "FAIL")
+        self.assertIn("authority", payload["mismatched"])
+
     def test_endpoint_exit_code_matches_reported_contract_state(self):
         check = ROOT / "tools" / "research" / "check"
         self.assertTrue(check.is_file())

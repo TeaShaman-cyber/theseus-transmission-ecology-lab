@@ -44,8 +44,8 @@ jobs:
           python -m pip install -e "$source_dir"
           (cd "$source_dir" && tools/run-v0)
           diff -ru receipts/reference "$source_dir/receipts/reference"
-      - name: Research contract QA
-        run: tools/research/check --output receipts/research-qa/v0.json
+      - name: Verify committed research contract receipt
+        run: tools/research/check --verify-stored receipts/research-qa/v0.json
       - uses: actions/upload-artifact@v4
         with:
           name: deterministic-v0-receipts

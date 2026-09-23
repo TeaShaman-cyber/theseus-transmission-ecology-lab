@@ -24,12 +24,16 @@ def _unique_object(pairs):
     return result
 
 
-def load_json(path: pathlib.Path):
+def loads_json_strict(text: str):
     return json.loads(
-        path.read_text(encoding="utf-8"),
+        text,
         parse_constant=_reject_constant,
         object_pairs_hook=_unique_object,
     )
+
+
+def load_json(path: pathlib.Path):
+    return loads_json_strict(path.read_text(encoding="utf-8"))
 
 
 def sha256_file(path: pathlib.Path) -> str:
@@ -124,12 +128,12 @@ def parse_wolfram_payload(raw: str):
         if not match:
             continue
         try:
-            value = json.loads(match.group(1))
+            value = loads_json_strict(match.group(1))
             if isinstance(value, str):
-                value = json.loads(value)
+                value = loads_json_strict(value)
             if isinstance(value, dict):
                 return value
-        except (json.JSONDecodeError, TypeError):
+        except (json.JSONDecodeError, TypeError, ValueError):
             pass
     return None
 

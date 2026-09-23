@@ -1361,6 +1361,92 @@ def build_current_receipt(root: Path) -> dict:
     }
 
 
+DURABLE_RESEARCH_EVIDENCE_PATHS = (
+    "receipts/reference/v0-virus.json",
+    "receipts/reference/v0-meme.json",
+    "receipts/reference/v0-agent.json",
+    "receipts/reference/v0-controls.json",
+    "receipts/independent/wolfram-v0.json",
+)
+
+
+def verify_stored_receipt(root: Path, path: Path) -> dict:
+    root = root.resolve()
+    stored_path = path if path.is_absolute() else root / path
+    try:
+        stored = _load_json(stored_path)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {
+            "verification_status": "FAIL",
+            "reason": "stored_receipt_unreadable",
+            "mismatched": ["stored_receipt"],
+        }
+    if not isinstance(stored, dict):
+        return {
+            "verification_status": "FAIL",
+            "reason": "stored_receipt_invalid",
+            "mismatched": ["stored_receipt"],
+        }
+
+    expected = build_current_receipt(root)
+    mismatched = []
+    semantic_keys = (set(stored) | set(expected)) - {"storage_head"}
+    for key in sorted(semantic_keys):
+        if stored.get(key) != expected.get(key):
+            mismatched.append(key)
+
+    if expected.get("contract_status") != "PASS":
+        if "contract_status" not in mismatched:
+            mismatched.append("contract_status")
+
+    storage_head = stored.get("storage_head")
+    source_commit = stored.get("source_commit")
+    current_head = _git_head(root)
+    if (
+        not isinstance(storage_head, str)
+        or re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", storage_head) is None
+    ):
+        mismatched.append("storage_head")
+    else:
+        ancestor = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", storage_head, current_head],
+            cwd=root,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if ancestor.returncode != 0:
+            mismatched.append("storage_head")
+        elif not isinstance(source_commit, str):
+            mismatched.append("source_commit")
+        else:
+            for relpath in DURABLE_RESEARCH_EVIDENCE_PATHS:
+                evidence = _git_blob_json(root, storage_head, relpath)
+                if (
+                    evidence is None
+                    or evidence.get("source_commit") != source_commit
+                ):
+                    mismatched.append("storage_head")
+                    break
+
+    mismatched = sorted(set(mismatched))
+    if mismatched:
+        return {
+            "verification_status": "FAIL",
+            "reason": "stored_receipt_mismatch",
+            "mismatched": mismatched,
+            "source_commit": source_commit,
+            "storage_head": storage_head,
+            "current_head": current_head,
+        }
+    return {
+        "verification_status": "PASS",
+        "source_commit": source_commit,
+        "storage_head": storage_head,
+        "current_head": current_head,
+    }
+
+
 def _write_atomic(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
@@ -1385,8 +1471,19 @@ def main(argv=None) -> int:
     )
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--verify-stored", type=Path)
     args = parser.parse_args(argv)
     root = args.root.resolve()
+    if args.output and args.verify_stored:
+        parser.error("--output and --verify-stored are mutually exclusive")
+    if args.verify_stored:
+        verification = verify_stored_receipt(root, args.verify_stored)
+        print(
+            json.dumps(verification, sort_keys=True, separators=(",", ":"))
+            + "\n",
+            end="",
+        )
+        return 0 if verification["verification_status"] == "PASS" else 1
     payload = build_current_receipt(root)
     text = json.dumps(
         payload, sort_keys=True, separators=(",", ":")

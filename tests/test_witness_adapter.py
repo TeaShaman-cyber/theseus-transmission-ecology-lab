@@ -62,6 +62,20 @@ class WitnessAdapterTests(unittest.TestCase):
         self.assertIn('subTarget = 0.8', first)
         self.assertIn('subTarget = 0.6', second)
 
+    def test_backend_payload_rejects_duplicate_keys_at_any_depth(self):
+        for raw in (
+            'Out[1]= "{\\"cycle_rank_beta1\\":999,\\"cycle_rank_beta1\\":2}"',
+            'Out[1]= "{\\"outer\\":{\\"value\\":1,\\"value\\":2}}"',
+        ):
+            with self.subTest(raw=raw):
+                self.assertIsNone(MODULE.parse_wolfram_payload(raw))
+
+    def test_backend_payload_rejects_nonstandard_numeric_constants(self):
+        for token in ("NaN", "Infinity", "-Infinity"):
+            raw = f'Out[1]= "{{\\"value\\":{token}}}"'
+            with self.subTest(token=token):
+                self.assertIsNone(MODULE.parse_wolfram_payload(raw))
+
     def test_render_rejects_duplicate_source_keys(self):
         temp, root = self._fixture_root()
         with temp:
