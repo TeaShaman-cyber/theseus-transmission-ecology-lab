@@ -261,6 +261,36 @@ def evaluate(runs=None, control=None, witness=None, *, source_commit=COMMIT_A, b
 
 
 class ResearchQATests(unittest.TestCase):
+    def test_v0_witness_numeric_checks_reject_boolean_aliases(self):
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["independent_witness"]["required_checks"]["weak_component_count"] = True
+        witness = valid_witness()
+        witness["checks"]["weak_component_count"] = True
+        witness["observed"].pop("weak_component_count")
+        out = evaluate_research_contract(
+            contract,
+            valid_runs(),
+            valid_control_receipt(),
+            witness,
+            source_commit=COMMIT_A,
+            evidence_bindings=BASE_BINDINGS,
+        )
+        self.assertEqual(out["contract_status"], "FAIL", out)
+        self.assertEqual(out["reason"], "invalid_v0_contract_profile", out)
+        self.assertIn(
+            "independent_witness.required_checks.values",
+            out["mismatched"],
+            out,
+        )
+
+    def test_v0_witness_check_values_use_type_sensitive_equality(self):
+        witness = valid_witness()
+        witness["checks"]["weak_component_count"] = True
+        out = evaluate(witness=witness)
+        self.assertEqual(out["contract_status"], "FAIL", out)
+        self.assertEqual(out["reason"], "witness_content_mismatch", out)
+        self.assertIn("checks.weak_component_count", out["mismatched"], out)
+
     def test_v0_witness_expectations_must_match_source_derived_semantics(self):
         mutations = (
             ("edge_count", 999),

@@ -90,6 +90,25 @@ def _nonnegative_int(value) -> bool:
     return not isinstance(value, bool) and isinstance(value, int) and value >= 0
 
 
+def _same_typed_scalar(left, right) -> bool:
+    if isinstance(left, bool) or isinstance(right, bool):
+        return isinstance(left, bool) and isinstance(right, bool) and left is right
+    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+        return (
+            math.isfinite(float(left))
+            and math.isfinite(float(right))
+            and float(left) == float(right)
+        )
+    return type(left) is type(right) and left == right
+
+
+def _same_typed_mapping(left: dict, right: dict) -> bool:
+    return (
+        set(left) == set(right)
+        and all(_same_typed_scalar(left[key], right[key]) for key in left)
+    )
+
+
 def _significant_rounding_half_step(
     value: float, digits: int, *, bounded_unit_interval_lower: bool = False
 ) -> float:
@@ -495,7 +514,9 @@ def evaluate_research_contract(
     source_expected_witness_checks = expected_witness.get("required_checks")
     if (
         not isinstance(source_expected_witness_checks, dict)
-        or required_witness_checks != source_expected_witness_checks
+        or not _same_typed_mapping(
+            required_witness_checks, source_expected_witness_checks
+        )
     ):
         return _status(
             "FAIL",
@@ -929,7 +950,9 @@ def evaluate_research_contract(
             witness_mismatches.append("checks")
         else:
             for key, expected in required_checks.items():
-                if observed_checks.get(key) != expected:
+                if key not in observed_checks or not _same_typed_scalar(
+                    observed_checks.get(key), expected
+                ):
                     witness_mismatches.append(f"checks.{key}")
 
         witness_observed = witness.get("observed")
@@ -950,7 +973,9 @@ def evaluate_research_contract(
                 ):
                     witness_mismatches.append(f"observed.{key}")
                     continue
-                if observed_value != observed_checks.get(key):
+                if not _same_typed_scalar(
+                    observed_value, observed_checks.get(key)
+                ):
                     witness_mismatches.append(f"observed.{key}")
 
             sub_rho = witness_observed.get("subcritical_spectral_radius")
