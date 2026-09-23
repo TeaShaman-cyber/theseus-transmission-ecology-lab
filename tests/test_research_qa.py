@@ -19,6 +19,13 @@ COMMIT_B = "b" * 40
 
 BASE_CONTRACT = {
     "schema_version": 1,
+    "allowed_dispositions": [
+        "FOUND_USEFUL_STRUCTURE",
+        "NO_SIGNAL",
+        "REFINE",
+        "REJECT",
+        "UNKNOWN_WITHIN_CURRENT_CONTRACT",
+    ],
     "experiment_id": "deterministic-v0",
     "question": "Which declared invariants survive substrate change?",
     "hypothesis": "Selected operator-level invariants remain comparable across substrates.",
@@ -484,6 +491,10 @@ class ResearchQATests(unittest.TestCase):
         mutations.append(("schema_version", contract))
 
         contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["allowed_dispositions"].remove("UNKNOWN_WITHIN_CURRENT_CONTRACT")
+        mutations.append(("allowed_dispositions", contract))
+
+        contract = json.loads(json.dumps(BASE_CONTRACT))
         contract["declared_metrics"].remove("perturbation_recovery_ratio")
         mutations.append(("declared_metrics", contract))
 
@@ -512,6 +523,48 @@ class ResearchQATests(unittest.TestCase):
                 self.assertEqual(out["contract_status"], "FAIL", out)
                 self.assertEqual(out["reason"], "invalid_v0_contract_profile", out)
                 self.assertIn(expected_field, out["mismatched"], out)
+
+    def test_contract_profile_lists_reject_non_string_entries_without_crashing(self):
+        mutations = []
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["allowed_dispositions"][0] = []
+        mutations.append(("allowed_dispositions", contract))
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["declared_metrics"][0] = []
+        mutations.append(("declared_metrics", contract))
+        contract = json.loads(json.dumps(BASE_CONTRACT))
+        contract["required_controls"][0] = {}
+        mutations.append(("required_controls", contract))
+
+        for expected_field, contract in mutations:
+            with self.subTest(expected_field=expected_field):
+                out = evaluate_research_contract(
+                    contract,
+                    valid_runs(),
+                    valid_control_receipt(),
+                    valid_witness(),
+                    source_commit=COMMIT_A,
+                    evidence_bindings=BASE_BINDINGS,
+                )
+                self.assertEqual(out["contract_status"], "FAIL", out)
+                self.assertEqual(out["reason"], "invalid_v0_contract_profile", out)
+                self.assertIn(expected_field, out["mismatched"], out)
+
+    def test_non_object_receipt_contract_fails_closed(self):
+        for bad_value in (True, 1, ["schema_version"]):
+            with self.subTest(bad_value=bad_value):
+                contract = json.loads(json.dumps(BASE_CONTRACT))
+                contract["receipt_contract"] = bad_value
+                out = evaluate_research_contract(
+                    contract,
+                    valid_runs(),
+                    valid_control_receipt(),
+                    valid_witness(),
+                    source_commit=COMMIT_A,
+                    evidence_bindings=BASE_BINDINGS,
+                )
+                self.assertEqual(out["contract_status"], "FAIL", out)
+                self.assertEqual(out["reason"], "invalid_receipt_contract", out)
 
     def test_nonfinite_contract_metadata_fails_closed(self):
         contract = json.loads(json.dumps(BASE_CONTRACT))
@@ -674,6 +727,14 @@ class ResearchQATests(unittest.TestCase):
         self.assertEqual(out["contract_status"], "FAIL")
         self.assertEqual(out["reason"], "run_receipt_binding_mismatch")
         self.assertIn("virus.metrics.surviving_variant_count", out["mismatched"])
+
+    def test_extreme_survivor_count_fails_closed_without_float_overflow(self):
+        runs = valid_runs()
+        runs["virus"]["metrics"]["surviving_variant_count"] = 10 ** 400
+        out = evaluate(runs=runs)
+        self.assertEqual(out["contract_status"], "FAIL", out)
+        self.assertEqual(out["reason"], "run_receipt_binding_mismatch", out)
+        self.assertIn("virus.metrics.surviving_variant_count", out["mismatched"], out)
 
     def test_extinction_time_must_match_mass_trace(self):
         runs = valid_runs()

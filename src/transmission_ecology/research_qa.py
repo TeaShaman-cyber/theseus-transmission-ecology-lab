@@ -30,6 +30,7 @@ V0_DECLARED_METRICS = (
     "perturbation_recovery_ratio",
 )
 V0_REQUIRED_CONTROLS = ("subcritical", "supercritical", "topology_only")
+V0_MACHINE_DISPOSITION = "UNKNOWN_WITHIN_CURRENT_CONTRACT"
 V0_REQUIRED_WITNESS_CHECKS = frozenset(
     {
         "vertex_count",
@@ -290,6 +291,8 @@ def _validate_metric_values(
                         mismatches.append("surviving_variant_count")
                     if pmax * final_mass > SURVIVAL_TOLERANCE:
                         mismatches.append("surviving_variant_count")
+                elif surviving > expected_variant_count:
+                    mismatches.append("surviving_variant_count")
                 else:
                     if final_mass <= SURVIVAL_TOLERANCE:
                         mismatches.append("surviving_variant_count")
@@ -415,10 +418,24 @@ def evaluate_research_contract(
     ):
         profile_mismatches.append("schema_version")
 
+    allowed_dispositions = contract.get("allowed_dispositions")
+    if (
+        not isinstance(allowed_dispositions, list)
+        or not allowed_dispositions
+        or any(
+            not isinstance(item, str) or not item.strip()
+            for item in allowed_dispositions
+        )
+        or len(set(allowed_dispositions)) != len(allowed_dispositions)
+        or V0_MACHINE_DISPOSITION not in allowed_dispositions
+    ):
+        profile_mismatches.append("allowed_dispositions")
+
     declared_metrics = contract.get("declared_metrics")
     if (
         not isinstance(declared_metrics, list)
         or len(declared_metrics) != len(V0_DECLARED_METRICS)
+        or any(not isinstance(item, str) or not item for item in declared_metrics)
         or set(declared_metrics) != set(V0_DECLARED_METRICS)
     ):
         profile_mismatches.append("declared_metrics")
@@ -427,6 +444,7 @@ def evaluate_research_contract(
     if (
         not isinstance(required_controls, list)
         or len(required_controls) != len(V0_REQUIRED_CONTROLS)
+        or any(not isinstance(item, str) or not item for item in required_controls)
         or set(required_controls) != set(V0_REQUIRED_CONTROLS)
     ):
         profile_mismatches.append("required_controls")
@@ -453,6 +471,7 @@ def evaluate_research_contract(
 
     required = (
         "experiment_id",
+        "allowed_dispositions",
         "question",
         "hypothesis",
         "falsifiers",
@@ -533,7 +552,9 @@ def evaluate_research_contract(
             mismatched=["survival_tolerance"],
         )
 
-    receipt_contract = contract.get("receipt_contract", {})
+    receipt_contract = contract.get("receipt_contract")
+    if not isinstance(receipt_contract, dict):
+        return _status("FAIL", "invalid_receipt_contract")
     expected_schema = receipt_contract.get("schema_version")
     expected_digits = receipt_contract.get("float_significant_digits")
     if (
@@ -1103,7 +1124,7 @@ def evaluate_research_contract(
     return {
         "contract_status": "PASS",
         "epistemic_state": "HYPOTHESIS",
-        "scientific_disposition": "UNKNOWN_WITHIN_CURRENT_CONTRACT",
+        "scientific_disposition": V0_MACHINE_DISPOSITION,
         "authority": "NONE",
         "source_commit": source_commit,
     }
