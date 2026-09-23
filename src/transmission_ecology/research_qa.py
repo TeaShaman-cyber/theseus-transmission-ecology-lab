@@ -501,6 +501,16 @@ def evaluate_research_contract(
     if absent:
         return _status("UNKNOWN", "missing_run_receipts", missing=absent)
 
+    invalid_run_receipts = sorted(
+        name for name in REQUIRED_RUNS if not isinstance(run_receipts.get(name), dict)
+    )
+    if invalid_run_receipts:
+        return _status(
+            "FAIL",
+            "invalid_run_receipt_type",
+            mismatched=[f"{name}.receipt" for name in invalid_run_receipts],
+        )
+
     if any(r.get("source_commit") != source_commit for r in run_receipts.values()):
         return _status("FAIL", "source_commit_mismatch")
 
@@ -748,6 +758,7 @@ def evaluate_research_contract(
 
     expected_subcritical_radius = expected_control.get("subcritical_target_radius")
     expected_supercritical_radius = expected_control.get("supercritical_target_radius")
+    expected_control_checks = expected_control.get("expected_checks")
     expected_control_variant_count = expected_control.get("variant_count")
     expected_control_horizon = expected_control.get("horizon")
     if (
@@ -755,6 +766,11 @@ def evaluate_research_contract(
         or not _finite_nonnegative_number(expected_supercritical_radius)
         or not float(expected_subcritical_radius) < 1.0
         or not float(expected_supercritical_radius) > 1.0
+        or not isinstance(expected_control_checks, dict)
+        or not all(
+            isinstance(expected_control_checks.get(name), dict)
+            for name in ("subcritical", "supercritical")
+        )
         or isinstance(expected_control_variant_count, bool)
         or not isinstance(expected_control_variant_count, int)
         or expected_control_variant_count <= 0
@@ -820,6 +836,11 @@ def evaluate_research_contract(
             control_mismatches.append(
                 "checks.subcritical.spectral_radius_lt_1"
             )
+        for field in ("spectral_radius", "initial_mass", "final_mass"):
+            if not _matches_rounded_numeric(
+                low[field], expected_control_checks["subcritical"].get(field), expected_digits
+            ):
+                control_mismatches.append(f"checks.subcritical.{field}.source")
         if not low["final_mass"] < low["initial_mass"]:
             control_mismatches.append("checks.subcritical.decay")
         low_pass = (
@@ -842,6 +863,11 @@ def evaluate_research_contract(
             control_mismatches.append(
                 "checks.supercritical.spectral_radius_gt_1"
             )
+        for field in ("spectral_radius", "initial_mass", "final_mass"):
+            if not _matches_rounded_numeric(
+                high[field], expected_control_checks["supercritical"].get(field), expected_digits
+            ):
+                control_mismatches.append(f"checks.supercritical.{field}.source")
         if not high["final_mass"] > high["initial_mass"]:
             control_mismatches.append("checks.supercritical.growth")
         high_pass = (
@@ -1420,6 +1446,86 @@ def _source_expected_perturbation_ratio(
     return max(0.0, min(1.0, ratio))
 
 
+def _source_expected_control_checks(
+    graph_data: dict, controls_data: dict
+) -> dict | None:
+    nodes = graph_data.get("nodes")
+    edges = graph_data.get("edges")
+    variant_count = controls_data.get("variant_count")
+    horizon = controls_data.get("horizon")
+    subcritical = controls_data.get("subcritical_target_radius")
+    supercritical = controls_data.get("supercritical_target_radius")
+    if (
+        not isinstance(nodes, list)
+        or not nodes
+        or any(not isinstance(node, str) or not node for node in nodes)
+        or len(set(nodes)) != len(nodes)
+        or not isinstance(edges, list)
+        or isinstance(variant_count, bool)
+        or not isinstance(variant_count, int)
+        or variant_count <= 0
+        or not _nonnegative_int(horizon)
+        or not _finite_nonnegative_number(subcritical)
+        or not _finite_nonnegative_number(supercritical)
+        or float(subcritical) <= 0.0
+        or float(supercritical) <= 0.0
+    ):
+        return None
+
+    node_index = {node: index for index, node in enumerate(nodes)}
+    node_count = len(nodes)
+    adjacency = [[0.0 for _ in range(node_count)] for _ in range(node_count)]
+    for edge in edges:
+        if not isinstance(edge, dict):
+            return None
+        source = edge.get("source")
+        target = edge.get("target")
+        weight = edge.get("weight")
+        if (
+            source not in node_index
+            or target not in node_index
+            or not _finite_nonnegative_number(weight)
+            or float(weight) <= 0.0
+        ):
+            return None
+        adjacency[node_index[target]][node_index[source]] += float(weight)
+
+    size = node_count * variant_count
+    base = [[0.0 for _ in range(size)] for _ in range(size)]
+    for target_node in range(node_count):
+        for source_node in range(node_count):
+            graph_weight = adjacency[target_node][source_node]
+            if graph_weight == 0.0:
+                continue
+            for variant in range(variant_count):
+                base[target_node * variant_count + variant][
+                    source_node * variant_count + variant
+                ] = graph_weight
+
+    base_rho = _dense_power_spectral_radius(base)
+    if base_rho is None or base_rho <= 0.0:
+        return None
+
+    initial = [1.0 for _ in range(size)]
+    result = {}
+    for name, target_radius in (
+        ("subcritical", float(subcritical)),
+        ("supercritical", float(supercritical)),
+    ):
+        scale = target_radius / base_rho
+        operator = [[value * scale for value in row] for row in base]
+        rho = _dense_power_spectral_radius(operator)
+        if rho is None:
+            return None
+        states = _dense_simulate(operator, initial, horizon)
+        result[name] = {
+            "spectral_radius": rho,
+            "initial_mass": math.fsum(states[0]),
+            "final_mass": math.fsum(states[-1]),
+        }
+    return result
+
+
 def _source_expected_witness_checks(
     graph_data: dict, controls_data: dict
 ) -> dict | None:
@@ -1541,7 +1647,10 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
     expected_witness_checks = _source_expected_witness_checks(
         graph_data, controls_data
     )
-    if expected_witness_checks is None:
+    expected_control_checks = _source_expected_control_checks(
+        graph_data, controls_data
+    )
+    if expected_witness_checks is None or expected_control_checks is None:
         return None
     recipe_path = witness_contract.get("recipe_path")
     adapter_path = witness_contract.get("adapter_path")
@@ -1617,6 +1726,7 @@ def _expected_evidence_bindings(root: Path, source_commit: str) -> dict | None:
             "horizon": controls_data.get("horizon"),
             "run_initial_mass": controls_data.get("run_initial_mass"),
             "run_seed_node": seed_node,
+            "expected_checks": expected_control_checks,
         },
     }
 
@@ -1705,7 +1815,26 @@ def build_current_receipt(root: Path) -> dict:
     )
     head = _git_head(root)
 
-    if runs:
+    invalid_runs = sorted(
+        name for name, receipt in runs.items() if not isinstance(receipt, dict)
+    )
+    if invalid_runs:
+        payload = _status(
+            "FAIL",
+            "invalid_run_receipt_type",
+            mismatched=[f"{name}.receipt" for name in invalid_runs],
+        )
+        valid_source_commits = {
+            receipt.get("source_commit")
+            for receipt in runs.values()
+            if isinstance(receipt, dict) and receipt.get("source_commit") is not None
+        }
+        source_commit = (
+            next(iter(valid_source_commits))
+            if len(valid_source_commits) == 1
+            else head
+        )
+    elif runs:
         source_commits = {r.get("source_commit") for r in runs.values()}
         if None in source_commits or len(source_commits) != 1:
             payload = _status("FAIL", "mixed_or_missing_run_source_commits")

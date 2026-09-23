@@ -131,6 +131,18 @@ BASE_BINDINGS = {
         "horizon": 8,
         "run_initial_mass": 1.0,
         "run_seed_node": "n1",
+        "expected_checks": {
+            "subcritical": {
+                "spectral_radius": 0.8,
+                "initial_mass": 1.0,
+                "final_mass": 0.5,
+            },
+            "supercritical": {
+                "spectral_radius": 1.2,
+                "initial_mass": 1.0,
+                "final_mass": 2.0,
+            },
+        },
     },
 }
 
@@ -1139,6 +1151,41 @@ class ResearchQATests(unittest.TestCase):
         out = evaluate(witness=witness)
         self.assertEqual(out["contract_status"], "FAIL")
         self.assertEqual(out["reason"], "witness_commit_mismatch")
+
+
+    def test_control_receipt_arbitrary_masses_fail_source_replay(self):
+        control = valid_control_receipt()
+        control["checks"]["subcritical"]["initial_mass"] = 999.0
+        control["checks"]["subcritical"]["final_mass"] = 1.0
+        control["checks"]["supercritical"]["initial_mass"] = 1.0
+        control["checks"]["supercritical"]["final_mass"] = 999.0
+        out = evaluate(control=control)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "control_receipt_binding_mismatch")
+        self.assertIn("checks.subcritical.initial_mass.source", out["mismatched"])
+        self.assertIn("checks.supercritical.final_mass.source", out["mismatched"])
+
+    def test_build_current_receipt_non_object_run_fails_closed(self):
+        original = __import__(
+            "transmission_ecology.research_qa", fromlist=["_maybe_load"]
+        )._maybe_load
+
+        def malformed_virus(path):
+            if path.name == "v0-virus.json":
+                return []
+            return original(path)
+
+        with (
+            patch("transmission_ecology.research_qa._maybe_load", side_effect=malformed_virus),
+            patch(
+                "transmission_ecology.research_qa._source_currentness",
+                return_value=("BOUND_UNCHANGED_SURFACE", None),
+            ),
+        ):
+            out = build_current_receipt(ROOT)
+        self.assertEqual(out["contract_status"], "FAIL")
+        self.assertEqual(out["reason"], "invalid_run_receipt_type")
+        self.assertIn("virus.receipt", out["mismatched"])
 
     def test_stored_research_receipt_binds_current_evidence_content(self):
         receipt_path = ROOT / "receipts" / "research-qa" / "v0.json"
