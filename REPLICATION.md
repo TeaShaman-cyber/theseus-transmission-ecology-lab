@@ -4,13 +4,22 @@ This package is for an independent reproduction of the first reviewed v1 A/B/C e
 
 ## Exact execution source
 
-Checkout exactly:
+The replication protocol document lives on this documentation branch, but the experiment itself must run from the exact execution source bound inside the canonical durable receipt. These are intentionally different revisions.
+
+From a clean clone, checkout the execution source explicitly:
+
+```sh
+git checkout --detach 0aff78fa79171176118a31cecef56313b571ce3f
+git rev-parse HEAD
+```
+
+The second command must print exactly:
 
 ```text
 0aff78fa79171176118a31cecef56313b571ce3f
 ```
 
-That is the execution source bound inside the canonical durable receipt. The later storage commit only records that receipt.
+Do not substitute the documentation-branch head, a future merge commit, or another storage commit for the execution source. The later storage commit only records the canonical receipt. Keep this `REPLICATION.md` as the protocol reference while executing the experiment from the detached source revision above.
 
 ## Environment
 
